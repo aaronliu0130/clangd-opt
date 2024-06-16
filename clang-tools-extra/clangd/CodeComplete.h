@@ -79,6 +79,7 @@ struct CodeCompleteOptions {
   struct IncludeInsertionIndicator {
     std::string Insert = "•";
     std::string NoInsert = " ";
+    std::string Rewrite = "⮞";
   } IncludeIndicator;
 
   /// Expose origins of completion items in the label (for debugging).
@@ -204,6 +205,9 @@ struct CodeCompletion {
   // If we've bundled together overloads that have different sets of includes,
   // thse includes may not be accurate for all of them.
   llvm::SmallVector<IncludeCandidate, 1> Includes;
+
+  /// True if the name is a description, rather than text to be inserted.
+  bool AbstractName = false;
 
   /// Holds information about small corrections that needs to be done. Like
   /// converting '->' to '.' on member access.

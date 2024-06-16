@@ -185,8 +185,12 @@ HoverInfo::PrintedType printType(QualType QT, ASTContext &ASTCtx,
   if (!QT.isNull() && Cfg.Hover.ShowAKA) {
     bool ShouldAKA = false;
     QualType DesugaredTy = clang::desugarForDiagnostic(ASTCtx, QT, ShouldAKA);
-    if (ShouldAKA)
+    if (ShouldAKA) {
       Result.AKA = DesugaredTy.getAsString(PP);
+      if (Result.Type.length() > 16 &&
+          Result.AKA->length() < Result.Type.length())
+        std::swap(*Result.AKA, Result.Type);
+    }
   }
   return Result;
 }
@@ -350,7 +354,7 @@ void enhanceFromIndex(HoverInfo &Hover, const NamedDecl &ND,
   LookupRequest Req;
   Req.IDs.insert(ID);
   Index->lookup(Req, [&](const Symbol &S) {
-    Hover.Documentation = std::string(S.Documentation);
+    Hover.Documentation = S.Documentation.toOwned();
   });
 }
 
@@ -387,7 +391,7 @@ void fillFunctionTypeAndParams(HoverInfo &HI, const Decl *D,
                                const FunctionDecl *FD,
                                const PrintingPolicy &PP) {
   HI.Parameters.emplace();
-  for (const ParmVarDecl *PVD : FD->parameters())
+  for (const ParmVarDecl *PVD : resolveForwardingParameters(FD))
     HI.Parameters->emplace_back(toHoverInfoParam(PVD, PP));
 
   // We don't want any type info, if name already contains it. This is true for
@@ -403,7 +407,6 @@ void fillFunctionTypeAndParams(HoverInfo &HI, const Decl *D,
   if (const VarDecl *VD = llvm::dyn_cast<VarDecl>(D)) // Lambdas
     QT = VD->getType().getDesugaredType(D->getASTContext());
   HI.Type = printType(QT, D->getASTContext(), PP);
-  // FIXME: handle variadics.
 }
 
 // Non-negative numbers are printed using min digits
@@ -628,10 +631,11 @@ HoverInfo getHoverContents(const NamedDecl *D, const PrintingPolicy &PP,
 
   HI.Name = printName(Ctx, *D);
   const auto *CommentD = getDeclForComment(D);
-  HI.Documentation = getDeclComment(Ctx, *CommentD);
+  HI.Documentation = getDeclDocumentation(Ctx, *CommentD);
   enhanceFromIndex(HI, *CommentD, Index);
   if (HI.Documentation.empty())
-    HI.Documentation = synthesizeDocumentation(D);
+    HI.Documentation =
+        SymbolDocumentationOwned::descriptionOnly(synthesizeDocumentation(D));
 
   HI.Kind = index::getSymbolInfo(D).Kind;
 
@@ -674,7 +678,6 @@ HoverInfo getHoverContents(const NamedDecl *D, const PrintingPolicy &PP,
       HI.Value = toString(ECD->getInitVal(), 10);
   }
 
-  HI.Definition = printDefinition(D, PP, TB);
   return HI;
 }
 
@@ -685,7 +688,8 @@ getPredefinedExprHoverContents(const PredefinedExpr &PE, ASTContext &Ctx,
   HoverInfo HI;
   HI.Name = PE.getIdentKindName();
   HI.Kind = index::SymbolKind::Variable;
-  HI.Documentation = "Name of the current function (predefined variable)";
+  HI.Documentation = SymbolDocumentationOwned::descriptionOnly(
+      "Name of the current function (predefined variable)");
   if (const StringLiteral *Name = PE.getFunctionName()) {
     HI.Value.emplace();
     llvm::raw_string_ostream OS(*HI.Value);
@@ -860,7 +864,7 @@ HoverInfo getDeducedTypeHoverContents(QualType QT, const syntax::Token &Tok,
 
     if (const auto *D = QT->getAsTagDecl()) {
       const auto *CommentD = getDeclForComment(D);
-      HI.Documentation = getDeclComment(ASTCtx, *CommentD);
+      HI.Documentation = getDeclDocumentation(ASTCtx, *CommentD);
       enhanceFromIndex(HI, *CommentD, Index);
     }
   }
@@ -960,7 +964,8 @@ std::optional<HoverInfo> getHoverContents(const Attr *A, ParsedAST &AST) {
     llvm::raw_string_ostream OS(HI.Definition);
     A->printPretty(OS, AST.getASTContext().getPrintingPolicy());
   }
-  HI.Documentation = Attr::getDocumentation(A->getKind()).str();
+  HI.Documentation = SymbolDocumentationOwned::descriptionOnly(
+      Attr::getDocumentation(A->getKind()).str());
   return HI;
 }
 
@@ -1000,6 +1005,131 @@ bool isHardLineBreakAfter(llvm::StringRef Line, llvm::StringRef Rest) {
   return punctuationIndicatesLineBreak(Line) || isHardLineBreakIndicator(Rest);
 }
 
+static auto getRecordOfMethodDecl(const CXXMethodDecl *Method) {
+  const auto *Record = Method->getParent();
+  if (Record)
+    Record = Record->getDefinition();
+  if (!Record || Record->isInvalidDecl())
+    return static_cast<const CXXRecordDecl *>(nullptr);
+  if (Record->isDependentType()) {
+    for (const auto &Base : Record->bases()) {
+      if (Base.getType()->isDependentType())
+        return static_cast<const CXXRecordDecl *>(nullptr);
+    }
+  }
+  return Record;
+}
+static uint64_t getVirtualCXXMethodsCount(const CXXRecordDecl *Record) {
+  uint64_t Count = 0;
+  for (const auto &Base :
+       Record->bases()) {
+    const auto *BaseRecord = Base.getType()->getAsCXXRecordDecl();
+    if (BaseRecord) {
+      auto VirtualMethodsInBase = getVirtualCXXMethodsCount(BaseRecord);
+      if (VirtualMethodsInBase) {
+        Count += VirtualMethodsInBase;
+        break;
+      }
+    }
+  }
+  static auto IsOverride = [](const CXXMethodDecl *Method,
+                              const CXXRecordDecl *Record) {
+    if (Method->size_overridden_methods() == 0)
+      return false;
+    for (const auto *MD : Method->overridden_methods()) {
+      const auto *RD = getRecordOfMethodDecl(MD);
+      if (RD && Record->isDerivedFrom(RD))
+        return true;
+    }
+    return false;
+  };
+  const auto MSABI =
+      Record->getASTContext().getTargetInfo().getCXXABI().isMicrosoft();
+  for (const auto *MD : Record->methods()) {
+    if (!MD->isVirtual() || IsOverride(MD, Record))
+      continue;
+    if (!MSABI && Record->getDestructor() == MD)
+      Count++;
+    Count++;
+  }
+  return Count;
+}
+static constexpr auto InvalidVirtualCXXMethodId =
+    std::numeric_limits<uint64_t>::max();
+static uint64_t findVirtualCXXMethodId(const CXXMethodDecl *Method,
+                                       const CXXRecordDecl *Record = nullptr) {
+  if (!Method->isVirtual())
+    return InvalidVirtualCXXMethodId;
+  if (!Record) {
+    Record = getRecordOfMethodDecl(Method);
+    if (!Record)
+      return InvalidVirtualCXXMethodId;
+  }
+  const auto MSABI =
+      Record->getASTContext().getTargetInfo().getCXXABI().isMicrosoft();
+  if (Record->getNumBases() == 0) {
+    uint64_t Id = 0;
+    for (const auto *MD : Record->methods()) {
+      if (!MD->isVirtual())
+        continue;
+      if (MD == Method)
+        return Id;
+      if (!MSABI && Record->getDestructor() == MD)
+        Id++;
+      Id++;
+    }
+  } else {
+    static auto GetBaseMethod = [](const CXXMethodDecl *Method,
+                                   const CXXRecordDecl *Record) {
+      const CXXMethodDecl *Base = Method;
+      if (Method->size_overridden_methods() == 0)
+        return Base;
+      for (const auto *MD : Method->overridden_methods()) {
+        const auto *RD = getRecordOfMethodDecl(MD);
+        if (RD && Record->isDerivedFrom(RD)) {
+          Record = RD;
+          Base = MD;
+        }
+      }
+      return Base;
+    };
+    auto GetMethodId = [MSABI](const CXXMethodDecl *Method,
+                               const CXXRecordDecl *Record,
+                               uint64_t IdOffset = 0) {
+      uint64_t Id = IdOffset;
+      for (const auto *MD : Record->methods()) {
+        const auto *BaseMethod = GetBaseMethod(MD, Record);
+        if (!MD->isVirtual() || BaseMethod != MD)
+          continue;
+        if (MD == Method)
+          return Id;
+        if (!MSABI && Record->getDestructor() == MD)
+          Id++;
+        Id++;
+      }
+      return InvalidVirtualCXXMethodId;
+    };
+
+    const auto *BaseMethod = GetBaseMethod(Method, Record);
+    if (BaseMethod != Method) {
+      const auto *Record = BaseMethod->getThisType()->getAsCXXRecordDecl();
+      return findVirtualCXXMethodId(BaseMethod, Record);
+    }
+    for (const auto &Base :
+         Record->bases()) {
+      const auto *BaseRecord = Base.getType()->getAsCXXRecordDecl();
+      if (!BaseRecord)
+        continue;
+      uint64_t IdOffset = getVirtualCXXMethodsCount(BaseRecord);
+      if (IdOffset == 0)
+        continue;
+      return GetMethodId(Method, Record, IdOffset);
+    }
+    return GetMethodId(Method, Record);
+  }
+  return InvalidVirtualCXXMethodId;
+}
+
 void addLayoutInfo(const NamedDecl &ND, HoverInfo &HI) {
   if (ND.isInvalidDecl())
     return;
@@ -1008,8 +1138,11 @@ void addLayoutInfo(const NamedDecl &ND, HoverInfo &HI) {
   if (auto *RD = llvm::dyn_cast<RecordDecl>(&ND)) {
     if (auto Size = Ctx.getTypeSizeInCharsIfKnown(RD->getTypeForDecl()))
       HI.Size = Size->getQuantity() * 8;
-    if (!RD->isDependentType() && RD->isCompleteDefinition())
+    if (!RD->isDependentType() && RD->isCompleteDefinition()) {
       HI.Align = Ctx.getTypeAlign(RD->getTypeForDecl());
+      if (const auto *Record = RD->getDefinition(); Record && HI.Size)
+        HI.Padding = calcRecordPaddings(Record, HI, Ctx);
+    }
     return;
   }
 
@@ -1020,6 +1153,7 @@ void addLayoutInfo(const NamedDecl &ND, HoverInfo &HI) {
     if (Record && !Record->isInvalidDecl() && !Record->isDependentType()) {
       HI.Align = Ctx.getTypeAlign(FD->getType());
       const ASTRecordLayout &Layout = Ctx.getASTRecordLayout(Record);
+      HI.Index = FD->getFieldIndex();
       HI.Offset = Layout.getFieldOffset(FD->getFieldIndex());
       if (FD->isBitField())
         HI.Size = FD->getBitWidthValue(Ctx);
@@ -1045,6 +1179,18 @@ void addLayoutInfo(const NamedDecl &ND, HoverInfo &HI) {
         HI.Offset.reset();
     }
     return;
+  }
+
+  if (const auto *MD = llvm::dyn_cast<CXXMethodDecl>(&ND)) {
+    if (MD->isVirtual()) {
+      auto Id = findVirtualCXXMethodId(MD);
+      if (Id != InvalidVirtualCXXMethodId) {
+        const auto PointerSize =
+            Ctx.getTargetInfo().getPointerWidth(LangAS::Default);
+        HI.Offset = Id * PointerSize;
+        HI.Size = PointerSize;
+      }
+    }
   }
 }
 
@@ -1363,13 +1509,14 @@ std::optional<HoverInfo> getHover(ParsedAST &AST, Position Pos,
         SelectionTree::createRight(AST.getASTContext(), TB, Offset, Offset);
     if (const SelectionTree::Node *N = ST.commonAncestor()) {
       // FIXME: Fill in HighlightRange with range coming from N->ASTNode.
-      auto Decls = explicitReferenceTargets(N->ASTNode, DeclRelation::Alias,
-                                            AST.getHeuristicResolver());
+      auto Decls = explicitReferenceTargets(
+          N->ASTNode, DeclRelation::Alias,
+          AST.getHeuristicResolver(&N->getDeclContext()));
       if (const auto *DeclToUse = pickDeclToUse(Decls)) {
         HoverCountMetric.record(1, "decl");
         HI = getHoverContents(DeclToUse, PP, Index, TB);
         // Layout info only shown when hovering on the field/class itself.
-        if (DeclToUse == N->ASTNode.get<Decl>())
+        if (DeclToUse == N->ASTNode.get<Decl>() || llvm::dyn_cast<RecordDecl>(DeclToUse) == nullptr)
           addLayoutInfo(*DeclToUse, *HI);
         // Look for a close enclosing expression to show the value of.
         if (!HI->Value)
@@ -1413,6 +1560,10 @@ std::optional<HoverInfo> getHover(ParsedAST &AST, Position Pos,
 static std::string formatSize(uint64_t SizeInBits) {
   uint64_t Value = SizeInBits % 8 == 0 ? SizeInBits / 8 : SizeInBits;
   const char *Unit = Value != 0 && Value == SizeInBits ? "bit" : "byte";
+  if (Value > 10 && Value != SizeInBits)
+    return llvm::formatv("{0} ({0:x}) {1}{2}", Value, Unit,
+                         Value == 1 ? "" : "s")
+        .str();
   return llvm::formatv("{0} {1}{2}", Value, Unit, Value == 1 ? "" : "s").str();
 }
 
@@ -1425,6 +1576,142 @@ static std::string formatOffset(uint64_t OffsetInBits) {
   if (Bits != 0)
     Offset += " and " + formatSize(Bits);
   return Offset;
+}
+
+// If the backtick at `Offset` starts a probable quoted range, return the range
+// (including the quotes).
+static std::optional<llvm::StringRef>
+getBacktickQuoteRange(llvm::StringRef Line, unsigned Offset,
+                      llvm::StringRef Quote = "`") {
+  assert(Line.substr(Offset, Quote.size()) == Quote);
+
+  // The open-quote is usually preceded by whitespace.
+  llvm::StringRef Prefix = Line.substr(0, Offset);
+  constexpr llvm::StringLiteral BeforeStartChars = " \t(=";
+  if (!Prefix.empty() && !BeforeStartChars.contains(Prefix.back()))
+    return std::nullopt;
+
+  // The quoted string must be nonempty and usually has no leading/trailing ws.
+  auto Next = Line.find(Quote, Offset + Quote.size());
+  if (Next == llvm::StringRef::npos)
+    return std::nullopt;
+  llvm::StringRef Contents = Line.slice(Offset + Quote.size(), Next);
+  if (Contents.empty() || isWhitespace(Contents.front()) ||
+      isWhitespace(Contents.back()))
+    return std::nullopt;
+
+  // The close-quote is usually followed by whitespace or punctuation.
+  llvm::StringRef Suffix = Line.substr(Next + Quote.size());
+  constexpr llvm::StringLiteral AfterEndChars = " \t)=.,;:";
+  if (!Suffix.empty() && !AfterEndChars.contains(Suffix.front()))
+    return std::nullopt;
+
+  return Line.slice(Offset, Next + Quote.size());
+}
+
+static void parseDocumentationLine(llvm::StringRef Line,
+                                   markup::Paragraph &Out) {
+  // Probably this is appendText(Line), but scan for something interesting.
+  for (unsigned I = 0; I < Line.size(); ++I) {
+    switch (Line[I]) {
+    case '`':
+      if (auto Range = getBacktickQuoteRange(Line, I)) {
+        Out.appendText(Line.substr(0, I));
+        Out.appendCode(Range->trim("`"), /*Preserve=*/true);
+        return parseDocumentationLine(Line.substr(I + Range->size()), Out);
+      }
+      break;
+    case '\\':
+      Out.appendText(Line.substr(0, I));
+      Out.appendText(Line.substr(I + 1, 1));
+      return parseDocumentationLine(Line.substr(I + 2), Out);
+    case '*':
+      if (Line[I + 1] == '*') {
+        if (auto Range = getBacktickQuoteRange(Line, I, "**")) {
+          Out.appendText(Line.substr(0, I));
+          Out.appendBoldText(Range->trim("**"));
+          return parseDocumentationLine(Line.substr(I + Range->size()), Out);
+        }
+      }
+      if (auto Range = getBacktickQuoteRange(Line, I, "*")) {
+        Out.appendText(Line.substr(0, I));
+        Out.appendItalicText(Range->trim("*"));
+        return parseDocumentationLine(Line.substr(I + Range->size()), Out);
+      }
+      break;
+    }
+  }
+  Out.appendText(Line).appendSpace();
+}
+
+static void
+presentOneParam(const HoverInfo::Param &Param,
+                const llvm::SmallVector<ParameterDocumentationOwned> &ParamDocs,
+                markup::BulletList &Output) {
+  auto &Paragraph = Output.addItem().addParagraph();
+
+  if (!Param.Name) {
+    Paragraph.appendCode(llvm::to_string(Param));
+    return;
+  }
+
+  // Strip system prefixes.
+  // E.g. for `char *strcpy (char * __dest, const char * __src)`, the `__dest`
+  // and `__src` will strip `__`. To get `dest` and `src`
+  std::size_t From = 0;
+  while ((*Param.Name)[From] == '_')
+    ++From;
+  auto Name = llvm::StringRef(*Param.Name).substr(From);
+
+  if (Param.Default)
+    Paragraph.appendCode(Name.str() + " = " + *Param.Default);
+  else
+    Paragraph.appendCode(Name);
+  Paragraph.appendText(": ");
+
+  auto *ParamDoc = std::find_if(
+      ParamDocs.begin(), ParamDocs.end(),
+      [Param](const auto &ParamDoc) { return Param.Name == ParamDoc.Name; });
+  if (ParamDoc != ParamDocs.end())
+    parseDocumentationLine(ParamDoc->Description, Paragraph);
+
+  if (Param.Type)
+    Paragraph.appendText(" (")
+        .appendCode(llvm::to_string(*Param.Type))
+        .appendText(")");
+}
+
+static void
+presentParams(std::string ParagraphName,
+              const std::optional<std::vector<HoverInfo::Param>> &Params,
+              const llvm::SmallVector<ParameterDocumentationOwned> &ParamDocs,
+              markup::Document &Output) {
+  if (!Params || Params->empty())
+    return;
+
+  auto It = Params->begin();
+  if (!It->Default) {
+    Output.addParagraph().appendText(ParagraphName + ": ");
+    markup::BulletList &ReqList = Output.addBulletList();
+
+    for (; It != Params->end() && !It->Default; ++It) {
+      presentOneParam(*It, ParamDocs, ReqList);
+    }
+  }
+
+  if (It == Params->end())
+    return;
+
+  if (std::isupper(ParagraphName.front())) {
+    ParagraphName.front() = std::tolower(ParagraphName.front());
+    Output.addParagraph().appendText("Optional " + ParagraphName + ": ");
+  } else
+    Output.addParagraph().appendText("optional " + ParagraphName + ": ");
+  markup::BulletList &OptList = Output.addBulletList();
+
+  for (; It != Params->end(); ++It) {
+    presentOneParam(*It, ParamDocs, OptList);
+  }
 }
 
 markup::Document HoverInfo::present() const {
@@ -1458,6 +1745,13 @@ markup::Document HoverInfo::present() const {
 
   // Put a linebreak after header to increase readability.
   Output.addRuler();
+
+  if (!Documentation.Brief.empty())
+    parseDocumentation(Documentation.Brief, Output);
+
+  presentParams("Template parameters", TemplateParameters,
+                Documentation.TemplateParameters, Output);
+
   // Print Types on their own lines to reduce chances of getting line-wrapped by
   // editor, as they might be long.
   if (ReturnType) {
@@ -1466,15 +1760,20 @@ markup::Document HoverInfo::present() const {
     // Parameters:
     // - `bool param1`
     // - `int param2 = 5`
-    Output.addParagraph().appendText("→ ").appendCode(
-        llvm::to_string(*ReturnType));
-  }
+    auto &P =
+        Output.addParagraph().appendText("→ ").appendCode(ReturnType->Type);
 
-  if (Parameters && !Parameters->empty()) {
-    Output.addParagraph().appendText("Parameters: ");
-    markup::BulletList &L = Output.addBulletList();
-    for (const auto &Param : *Parameters)
-      L.addItem().addParagraph().appendCode(llvm::to_string(Param));
+    if (!Documentation.Returns.empty())
+      parseDocumentationLine(Documentation.Returns, P.appendText(": "));
+
+    if (ReturnType->AKA)
+      P.appendCode(" (aka " + *ReturnType->AKA + ")");
+  }
+  presentParams("Parameters", Parameters, Documentation.Parameters, Output);
+
+  if (!Documentation.Details.empty()) {
+    Output.addParagraph().appendText("Details: ");
+    parseDocumentation(Documentation.Details, Output);
   }
 
   // Don't print Type after Parameters or ReturnType as this will just duplicate
@@ -1489,16 +1788,23 @@ markup::Document HoverInfo::present() const {
     P.appendCode(*Value);
   }
 
-  if (Offset)
-    Output.addParagraph().appendText("Offset: " + formatOffset(*Offset));
+  if (Offset) {
+    auto &P =
+        Output.addParagraph().appendText("Offset: " + formatOffset(*Offset));
+    if (Index)
+      P.appendText(llvm::formatv(" (index {0})", *Index).str());
+  }
   if (Size) {
     auto &P = Output.addParagraph().appendText("Size: " + formatSize(*Size));
-    if (Padding && *Padding != 0) {
+    if (Padding && *Padding != 0 && !isKindRecord(Kind)) {
       P.appendText(
           llvm::formatv(" (+{0} padding)", formatSize(*Padding)).str());
     }
     if (Align)
       P.appendText(", alignment " + formatSize(*Align));
+  }
+  if (Padding && *Padding != 0 && isKindRecord(Kind)) {
+    Output.addParagraph().appendText("Paddings: " + formatOffset(*Padding));
   }
 
   if (CalleeArgInfo) {
@@ -1521,8 +1827,63 @@ markup::Document HoverInfo::present() const {
     Output.addParagraph().appendText(OS.str());
   }
 
-  if (!Documentation.empty())
-    parseDocumentation(Documentation, Output);
+  if (!Documentation.Description.empty())
+    parseDocumentation(Documentation.Description, Output);
+
+  if (!Documentation.Warnings.empty()) {
+    Output.addRuler();
+    Output.addParagraph()
+        .appendText("Warning")
+        .appendText(Documentation.Warnings.size() > 1 ? "s" : "")
+        .appendText(": ");
+    markup::BulletList &L = Output.addBulletList();
+    for (const auto &Warning : Documentation.Warnings)
+      parseDocumentation(Warning, L.addItem());
+  }
+
+  if (!Documentation.Notes.empty()) {
+    Output.addRuler();
+    Output.addParagraph()
+        .appendText("Note")
+        .appendText(Documentation.Notes.size() > 1 ? "s" : "")
+        .appendText(": ");
+    markup::BulletList &L = Output.addBulletList();
+    for (const auto &Note : Documentation.Notes)
+      parseDocumentation(Note, L.addItem());
+  }
+
+  if (!Documentation.Exceptions.empty()) {
+    Output.addRuler();
+    Output.addParagraph()
+        .appendText("Exception")
+        .appendText(Documentation.Exceptions.size() > 1 ? "s" : "")
+        .appendText(": ");
+    markup::BulletList &L = Output.addBulletList();
+    for (const auto &Exception : Documentation.Exceptions)
+      parseDocumentation(Exception, L.addItem());
+  }
+
+  if (!Documentation.Bugs.empty()) {
+    Output.addRuler();
+    Output.addParagraph()
+        .appendText("Bug")
+        .appendText(Documentation.Bugs.size() > 1 ? "s" : "")
+        .appendText(": ");
+    markup::BulletList &L = Output.addBulletList();
+    for (const auto &Bug : Documentation.Bugs)
+      parseDocumentation(Bug, L.addItem());
+  }
+
+  if (!Documentation.Todos.empty()) {
+    Output.addRuler();
+    Output.addParagraph()
+        .appendText("Todo")
+        .appendText(Documentation.Todos.size() > 1 ? "s" : "")
+        .appendText(": ");
+    markup::BulletList &L = Output.addBulletList();
+    for (const auto &Todo : Documentation.Todos)
+      parseDocumentation(Todo, L.addItem());
+  }
 
   if (!Definition.empty()) {
     Output.addRuler();
@@ -1572,52 +1933,6 @@ markup::Document HoverInfo::present() const {
   }
 
   return Output;
-}
-
-// If the backtick at `Offset` starts a probable quoted range, return the range
-// (including the quotes).
-std::optional<llvm::StringRef> getBacktickQuoteRange(llvm::StringRef Line,
-                                                     unsigned Offset) {
-  assert(Line[Offset] == '`');
-
-  // The open-quote is usually preceded by whitespace.
-  llvm::StringRef Prefix = Line.substr(0, Offset);
-  constexpr llvm::StringLiteral BeforeStartChars = " \t(=";
-  if (!Prefix.empty() && !BeforeStartChars.contains(Prefix.back()))
-    return std::nullopt;
-
-  // The quoted string must be nonempty and usually has no leading/trailing ws.
-  auto Next = Line.find('`', Offset + 1);
-  if (Next == llvm::StringRef::npos)
-    return std::nullopt;
-  llvm::StringRef Contents = Line.slice(Offset + 1, Next);
-  if (Contents.empty() || isWhitespace(Contents.front()) ||
-      isWhitespace(Contents.back()))
-    return std::nullopt;
-
-  // The close-quote is usually followed by whitespace or punctuation.
-  llvm::StringRef Suffix = Line.substr(Next + 1);
-  constexpr llvm::StringLiteral AfterEndChars = " \t)=.,;:";
-  if (!Suffix.empty() && !AfterEndChars.contains(Suffix.front()))
-    return std::nullopt;
-
-  return Line.slice(Offset, Next + 1);
-}
-
-void parseDocumentationLine(llvm::StringRef Line, markup::Paragraph &Out) {
-  // Probably this is appendText(Line), but scan for something interesting.
-  for (unsigned I = 0; I < Line.size(); ++I) {
-    switch (Line[I]) {
-    case '`':
-      if (auto Range = getBacktickQuoteRange(Line, I)) {
-        Out.appendText(Line.substr(0, I));
-        Out.appendCode(Range->trim("`"), /*Preserve=*/true);
-        return parseDocumentationLine(Line.substr(I + Range->size()), Out);
-      }
-      break;
-    }
-  }
-  Out.appendText(Line).appendSpace();
 }
 
 void parseDocumentation(llvm::StringRef Input, markup::Document &Output) {

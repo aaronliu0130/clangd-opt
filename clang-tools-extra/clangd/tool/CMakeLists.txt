@@ -44,6 +44,7 @@ target_link_libraries(clangdMain
 clang_target_link_libraries(clangd
   PRIVATE
   clangAST
+  clangASTMatchers
   clangBasic
   clangLex
   clangSema

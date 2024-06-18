@@ -1005,6 +1005,52 @@ bool isHardLineBreakAfter(llvm::StringRef Line, llvm::StringRef Rest) {
   return punctuationIndicatesLineBreak(Line) || isHardLineBreakIndicator(Rest);
 }
 
+static uint64_t calcRecordPaddings(const RecordDecl *Record, HoverInfo &HI,
+                                   const ASTContext &Ctx) {
+  std::optional<uint64_t> TotalPaddings;
+  if (const auto *CxxRecord = llvm::dyn_cast<CXXRecordDecl>(Record)) {
+    for (const auto &Base : CxxRecord->bases()) {
+      if (Base.isVirtual())
+        continue;
+      if (const auto *RecordBase = Base.getType()->getAsRecordDecl()) {
+        if (const auto Paddings = calcRecordPaddings(RecordBase, HI, Ctx)) {
+          if (!TotalPaddings)
+            TotalPaddings = Paddings;
+          else
+            *TotalPaddings += Paddings;
+        }
+      }
+    }
+  }
+
+  uint64_t RecordSize = 0;
+  if (auto Size = Ctx.getTypeSizeInCharsIfKnown(Record->getTypeForDecl()))
+    RecordSize = Size->getQuantity() * 8;
+  const ASTRecordLayout &Layout = Ctx.getASTRecordLayout(Record);
+  const auto FieldsCount = Layout.getFieldCount();
+  for (const auto &Field : Record->fields()) {
+    const auto FiledID = Field->getFieldIndex();
+    uint64_t FieldSize = 0;
+    if (Field->isBitField())
+      FieldSize = Field->getBitWidthValue(Ctx);
+    else if (auto Size = Ctx.getTypeSizeInCharsIfKnown(Field->getType()))
+      FieldSize = Field->isZeroSize(Ctx) ? 0 : Size->getQuantity() * 8;
+    const auto EndOfField = Layout.getFieldOffset(FiledID) + FieldSize;
+    const auto NextOffset = FiledID < FieldsCount - 1
+                                ? Layout.getFieldOffset(FiledID + 1)
+                                : (RecordSize != 0 ? RecordSize : EndOfField);
+    const auto Padding = NextOffset - EndOfField;
+    if (!TotalPaddings)
+      TotalPaddings = Padding;
+    else if (Record->isUnion())
+      TotalPaddings = std::min(*TotalPaddings, Padding);
+    else
+      *TotalPaddings += Padding;
+  }
+
+  return TotalPaddings ? *TotalPaddings : 0;
+}
+
 static auto getRecordOfMethodDecl(const CXXMethodDecl *Method) {
   const auto *Record = Method->getParent();
   if (Record)
@@ -1712,6 +1758,11 @@ presentParams(std::string ParagraphName,
   for (; It != Params->end(); ++It) {
     presentOneParam(*It, ParamDocs, OptList);
   }
+}
+
+static bool isKindRecord(index::SymbolKind Kind) {
+  return Kind == index::SymbolKind::Class ||
+         Kind == index::SymbolKind::Struct || Kind == index::SymbolKind::Union;
 }
 
 markup::Document HoverInfo::present() const {

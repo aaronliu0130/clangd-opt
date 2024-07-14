@@ -53,6 +53,12 @@ public:
   /// \p Preserve indicates the code span must be apparent even in plaintext.
   Paragraph &appendCode(llvm::StringRef Code, bool Preserve = false);
 
+  /// Append bold text to the end of the string.
+  Paragraph &appendBoldText(llvm::StringRef Text);
+
+  /// Append italic text to the end of the string.
+  Paragraph &appendItalicText(llvm::StringRef Text);
+
   /// Ensure there is space between the surrounding chunks.
   /// Has no effect at the beginning or end of a paragraph.
   Paragraph &appendSpace();
@@ -62,6 +68,8 @@ private:
     enum {
       PlainText,
       InlineCode,
+      BoldText,
+      ItalicText,
     } Kind = PlainText;
     // Preserve chunk markers in plaintext.
     bool Preserve = false;

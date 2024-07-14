@@ -164,6 +164,14 @@ std::string renderText(llvm::StringRef Input, bool StartsLine) {
   return R;
 }
 
+std::string renderBoldText(llvm::StringRef Input, bool StartsLine) {
+  return "**" + renderText(Input, StartsLine) + "**";
+}
+
+std::string renderItalicText(llvm::StringRef Input, bool StartsLine) {
+  return "*" + renderText(Input, StartsLine) + "*";
+}
+
 /// Renders \p Input as an inline block of code in markdown. The returned value
 /// is surrounded by backticks and the inner contents are properly escaped.
 std::string renderInlineBlock(llvm::StringRef Input) {
@@ -354,6 +362,12 @@ void Paragraph::renderMarkdown(llvm::raw_ostream &OS) const {
     case Chunk::InlineCode:
       OS << renderInlineBlock(C.Contents);
       break;
+    case Chunk::BoldText:
+      OS << renderBoldText(C.Contents, !HasChunks);
+      break;
+    case Chunk::ItalicText:
+      OS << renderItalicText(C.Contents, !HasChunks);
+      break;
     }
     HasChunks = true;
     NeedsSpace = C.SpaceAfter;
@@ -446,6 +460,32 @@ Paragraph &Paragraph::appendCode(llvm::StringRef Code, bool Preserve) {
   C.Preserve = Preserve;
   // Disallow adjacent code spans without spaces, markdown can't render them.
   C.SpaceBefore = AdjacentCode;
+  return *this;
+}
+
+Paragraph &Paragraph::appendBoldText(llvm::StringRef Text) {
+  std::string Norm = canonicalizeSpaces(Text);
+  if (Norm.empty())
+    return *this;
+  Chunks.emplace_back();
+  Chunk &C = Chunks.back();
+  C.Contents = std::move(Norm);
+  C.Kind = Chunk::BoldText;
+  C.SpaceBefore = llvm::isSpace(Text.front());
+  C.SpaceAfter = llvm::isSpace(Text.back());
+  return *this;
+}
+
+Paragraph &Paragraph::appendItalicText(llvm::StringRef Text) {
+  std::string Norm = canonicalizeSpaces(Text);
+  if (Norm.empty())
+    return *this;
+  Chunks.emplace_back();
+  Chunk &C = Chunks.back();
+  C.Contents = std::move(Norm);
+  C.Kind = Chunk::ItalicText;
+  C.SpaceBefore = llvm::isSpace(Text.front());
+  C.SpaceAfter = llvm::isSpace(Text.back());
   return *this;
 }
 

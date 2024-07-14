@@ -684,6 +684,11 @@ void ClangdLSPServer::onInitialize(const InitializeParams &Params,
        {"capabilities", std::move(ServerCaps)}}};
   if (Opts.Encoding)
     Result["offsetEncoding"] = *Opts.Encoding;
+  if (Opts.CodeLens)
+    Result.getObject("capabilities")
+        ->insert({"codeLensProvider", llvm::json::Object{
+                                          {"resolveProvider", true},
+                                      }});
   Reply(std::move(Result));
 
   // Apply settings after we're fully initialized.
@@ -1419,7 +1424,10 @@ void ClangdLSPServer::applyConfiguration(
                                 std::move(Entry.second.compilationCommand),
                                 /*Output=*/"");
     if (Old != New) {
-      CDB->setCompileCommand(File, std::move(New));
+      if (New.CommandLine.empty() && New.Directory.empty())
+        CDB->setCompileCommand(File, std::nullopt);
+      else
+        CDB->setCompileCommand(File, std::move(New));
       ModifiedFiles.insert(File);
     }
   }
@@ -1623,6 +1631,30 @@ void ClangdLSPServer::onMemoryUsage(const NoParams &,
   Reply(std::move(MT));
 }
 
+void ClangdLSPServer::onCodeLens(const CodeLensParams &Params,
+                                 Callback<std::vector<CodeLens>> Reply) {
+  URIForFile FileURI = Params.textDocument.uri;
+  Server->provideCodeLens(
+      FileURI.file(), Opts.ReferencesLimit,
+      [Reply = std::move(Reply)](
+          llvm::Expected<std::vector<CodeLens>> CodeLens) mutable {
+        if (!CodeLens)
+          return Reply(CodeLens.takeError());
+        return Reply(std::move(*CodeLens));
+      });
+}
+
+void ClangdLSPServer::onCodeLensResolve(const CodeLens &Params,
+                                        Callback<CodeLens> Reply) {
+  Server->resolveCodeLens(
+      Params, Opts.ReferencesLimit,
+      [Reply = std::move(Reply)](llvm::Expected<CodeLens> CodeLens) mutable {
+        if (!CodeLens)
+          return Reply(CodeLens.takeError());
+        return Reply(std::move(*CodeLens));
+      });
+}
+
 void ClangdLSPServer::onAST(const ASTParams &Params,
                             Callback<std::optional<ASTNode>> CB) {
   Server->getAST(Params.textDocument.uri.file(), Params.range, std::move(CB));
@@ -1700,6 +1732,10 @@ void ClangdLSPServer::bindMethods(LSPBinder &Bind,
   Bind.command(ApplyTweakCommand, this, &ClangdLSPServer::onCommandApplyTweak);
   Bind.command(ApplyRenameCommand, this, &ClangdLSPServer::onCommandApplyRename);
 
+  if (Opts.CodeLens) {
+    Bind.method("textDocument/codeLens",this, &ClangdLSPServer::onCodeLens);
+    Bind.method("codeLens/resolve",this, &ClangdLSPServer::onCodeLensResolve);
+  }
   ApplyWorkspaceEdit = Bind.outgoingMethod("workspace/applyEdit");
   PublishDiagnostics = Bind.outgoingNotification("textDocument/publishDiagnostics");
   if (Caps.InactiveRegions)

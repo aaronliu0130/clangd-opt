@@ -161,7 +161,12 @@ llvm::Expected<CodeLens> resolveCodeLens(ParsedAST &AST, const CodeLens &Params,
     auto Refs = FindedRefs.References;
     Arg.locations.reserve(Refs.size());
     size_t NotUsedRefs = 0u;
+    bool ThisLocSkipped = false;
     for (auto &Ref : Refs) {
+      if (!ThisLocSkipped && Ref.Loc.range.contains(Pos)) {
+        ThisLocSkipped = true;
+        continue;
+      }
       if ((Ref.Attributes &
            (ReferencesResult::Declaration | ReferencesResult::Definition |
             ReferencesResult::Override)) != 0)

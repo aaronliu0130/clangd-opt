@@ -74,7 +74,6 @@
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/raw_os_ostream.h"
-#include <optional>
 
 #include <algorithm>
 #include <optional>

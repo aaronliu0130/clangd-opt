@@ -128,6 +128,7 @@ add_unittest(ClangdUnitTests ClangdTests
   tweaks/ExpandMacroTests.cpp
   tweaks/ExtractFunctionTests.cpp
   tweaks/ExtractVariableTests.cpp
+  tweaks/ImplementAbstractTests.cpp
   tweaks/MemberwiseConstructorTests.cpp
   tweaks/ObjCLocalizeStringLiteralTests.cpp
   tweaks/ObjCMemberwiseInitializerTests.cpp

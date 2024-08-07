@@ -27,8 +27,6 @@
 #include <vector>
 
 using namespace clang;
-
-using namespace clang;
 using namespace clang::interp;
 
 static bool RetValue(InterpState &S, CodePtr &Pt, APValue &Result) {
@@ -233,7 +231,8 @@ void cleanupAfterFunctionCall(InterpState &S, CodePtr OpPC) {
       assert(false && "Can't get arguments from that expression type");
 
     assert(NumArgs >= CurFunc->getNumWrittenParams());
-    NumVarArgs = NumArgs - CurFunc->getNumWrittenParams();
+    NumVarArgs = NumArgs - (CurFunc->getNumWrittenParams() +
+                            isa<CXXOperatorCallExpr>(CallSite));
     for (unsigned I = 0; I != NumVarArgs; ++I) {
       const Expr *A = Args[NumArgs - 1 - I];
       popArg(S, A);
@@ -333,7 +332,7 @@ bool CheckConstant(InterpState &S, CodePtr OpPC, const Descriptor *Desc) {
 }
 
 static bool CheckConstant(InterpState &S, CodePtr OpPC, const Pointer &Ptr) {
-  if (Ptr.isIntegralPointer())
+  if (!Ptr.isBlockPointer())
     return true;
   return CheckConstant(S, OpPC, Ptr.getDeclDesc());
 }
@@ -836,6 +835,12 @@ static bool runRecordDestructor(InterpState &S, CodePtr OpPC,
   assert(Desc->isRecord());
   const Record *R = Desc->ElemRecord;
   assert(R);
+
+  if (Pointer::pointToSameBlock(BasePtr, S.Current->getThis())) {
+    const SourceInfo &Loc = S.Current->getSource(OpPC);
+    S.FFDiag(Loc, diag::note_constexpr_double_destroy);
+    return false;
+  }
 
   // Fields.
   for (const Record::Field &Field : llvm::reverse(R->fields())) {

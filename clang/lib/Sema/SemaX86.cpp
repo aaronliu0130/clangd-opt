@@ -13,6 +13,7 @@
 #include "clang/Sema/SemaX86.h"
 #include "clang/Basic/DiagnosticSema.h"
 #include "clang/Basic/TargetBuiltins.h"
+#include "clang/Basic/TargetInfo.h"
 #include "clang/Sema/Attr.h"
 #include "clang/Sema/ParsedAttr.h"
 #include "clang/Sema/Sema.h"
@@ -88,6 +89,14 @@ bool SemaX86::CheckBuiltinRoundingOrSAE(unsigned BuiltinID, CallExpr *TheCall) {
   case X86::BI__builtin_ia32_vgetexppd256_round_mask:
   case X86::BI__builtin_ia32_vgetexpps256_round_mask:
   case X86::BI__builtin_ia32_vgetexpph256_round_mask:
+  case X86::BI__builtin_ia32_vcvttph2ibs256_mask:
+  case X86::BI__builtin_ia32_vcvttph2iubs256_mask:
+  case X86::BI__builtin_ia32_vcvttps2ibs256_mask:
+  case X86::BI__builtin_ia32_vcvttps2iubs256_mask:
+  case X86::BI__builtin_ia32_vcvttph2ibs512_mask:
+  case X86::BI__builtin_ia32_vcvttph2iubs512_mask:
+  case X86::BI__builtin_ia32_vcvttps2ibs512_mask:
+  case X86::BI__builtin_ia32_vcvttps2iubs512_mask:
     ArgNum = 3;
     break;
   case X86::BI__builtin_ia32_cmppd512_mask:
@@ -158,6 +167,15 @@ bool SemaX86::CheckBuiltinRoundingOrSAE(unsigned BuiltinID, CallExpr *TheCall) {
   case X86::BI__builtin_ia32_rndscalesd_round_mask:
   case X86::BI__builtin_ia32_rndscaless_round_mask:
   case X86::BI__builtin_ia32_rndscalesh_round_mask:
+  case X86::BI__builtin_ia32_vminmaxpd256_round_mask:
+  case X86::BI__builtin_ia32_vminmaxps256_round_mask:
+  case X86::BI__builtin_ia32_vminmaxph256_round_mask:
+  case X86::BI__builtin_ia32_vminmaxpd512_round_mask:
+  case X86::BI__builtin_ia32_vminmaxps512_round_mask:
+  case X86::BI__builtin_ia32_vminmaxph512_round_mask:
+  case X86::BI__builtin_ia32_vminmaxsd_round_mask:
+  case X86::BI__builtin_ia32_vminmaxsh_round_mask:
+  case X86::BI__builtin_ia32_vminmaxss_round_mask:
     ArgNum = 5;
     break;
   case X86::BI__builtin_ia32_vcvtsd2si64:
@@ -293,6 +311,14 @@ bool SemaX86::CheckBuiltinRoundingOrSAE(unsigned BuiltinID, CallExpr *TheCall) {
   case X86::BI__builtin_ia32_vcvtph2uqq256_round_mask:
   case X86::BI__builtin_ia32_vcvtqq2ph256_round_mask:
   case X86::BI__builtin_ia32_vcvtuqq2ph256_round_mask:
+  case X86::BI__builtin_ia32_vcvtph2ibs256_mask:
+  case X86::BI__builtin_ia32_vcvtph2iubs256_mask:
+  case X86::BI__builtin_ia32_vcvtps2ibs256_mask:
+  case X86::BI__builtin_ia32_vcvtps2iubs256_mask:
+  case X86::BI__builtin_ia32_vcvtph2ibs512_mask:
+  case X86::BI__builtin_ia32_vcvtph2iubs512_mask:
+  case X86::BI__builtin_ia32_vcvtps2ibs512_mask:
+  case X86::BI__builtin_ia32_vcvtps2iubs512_mask:
     ArgNum = 3;
     HasRC = true;
     break;
@@ -404,6 +430,8 @@ bool SemaX86::CheckBuiltinRoundingOrSAE(unsigned BuiltinID, CallExpr *TheCall) {
   case X86::BI__builtin_ia32_vfmulcph512_mask:
   case X86::BI__builtin_ia32_vfcmulcsh_mask:
   case X86::BI__builtin_ia32_vfcmulcph512_mask:
+  case X86::BI__builtin_ia32_vcvt2ps2phx256_mask:
+  case X86::BI__builtin_ia32_vcvt2ps2phx512_mask:
     ArgNum = 4;
     HasRC = true;
     break;
@@ -952,6 +980,21 @@ bool SemaX86::CheckBuiltinFunctionCall(const TargetInfo &TI, unsigned BuiltinID,
   case X86::BI__builtin_ia32_vpshrdw128:
   case X86::BI__builtin_ia32_vpshrdw256:
   case X86::BI__builtin_ia32_vpshrdw512:
+  case X86::BI__builtin_ia32_vminmaxnepbf16128:
+  case X86::BI__builtin_ia32_vminmaxnepbf16256:
+  case X86::BI__builtin_ia32_vminmaxnepbf16512:
+  case X86::BI__builtin_ia32_vminmaxpd128_mask:
+  case X86::BI__builtin_ia32_vminmaxpd256_round_mask:
+  case X86::BI__builtin_ia32_vminmaxph128_mask:
+  case X86::BI__builtin_ia32_vminmaxph256_round_mask:
+  case X86::BI__builtin_ia32_vminmaxps128_mask:
+  case X86::BI__builtin_ia32_vminmaxps256_round_mask:
+  case X86::BI__builtin_ia32_vminmaxpd512_round_mask:
+  case X86::BI__builtin_ia32_vminmaxps512_round_mask:
+  case X86::BI__builtin_ia32_vminmaxph512_round_mask:
+  case X86::BI__builtin_ia32_vminmaxsd_round_mask:
+  case X86::BI__builtin_ia32_vminmaxsh_round_mask:
+  case X86::BI__builtin_ia32_vminmaxss_round_mask:
     i = 2;
     l = 0;
     u = 255;

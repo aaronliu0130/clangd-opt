@@ -234,12 +234,17 @@ template <> struct MappingTraits<ParameterDocumentationRef> {
 template <> struct MappingTraits<SymbolDocumentationRef> {
   static void mapping(IO &IO, SymbolDocumentationRef &Doc) {
     IO.mapOptional("Brief", Doc.Brief);
+    IO.mapOptional("Details", Doc.Details);
     IO.mapOptional("Returns", Doc.Returns);
 
     IO.mapOptional("Notes", Doc.Notes);
     IO.mapOptional("Warnings", Doc.Warnings);
+    IO.mapOptional("Exceptions", Doc.Exceptions);
+    IO.mapOptional("Todos", Doc.Todos);
+    IO.mapOptional("Bugs", Doc.Bugs);
 
     IO.mapOptional("Parameters", Doc.Parameters);
+    IO.mapOptional("TemplateParameters", Doc.TemplateParameters);
 
     IO.mapOptional("Description", Doc.Description);
     IO.mapOptional("CommentText", Doc.CommentText);

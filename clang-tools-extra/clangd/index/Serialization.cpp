@@ -287,6 +287,7 @@ void writeSymbolDocumentation(const SymbolDocumentationRef &Doc,
                               const StringTableOut &Strings,
                               llvm::raw_ostream &OS) {
   writeVar(Strings.index(Doc.Brief), OS);
+  writeVar(Strings.index(Doc.Details), OS);
   writeVar(Strings.index(Doc.Returns), OS);
 
   writeVar(Doc.Notes.size(), OS);
@@ -297,8 +298,26 @@ void writeSymbolDocumentation(const SymbolDocumentationRef &Doc,
   for (const auto &Warning : Doc.Warnings)
     writeVar(Strings.index(Warning), OS);
 
+  writeVar(Doc.Exceptions.size(), OS);
+  for (const auto &Exception : Doc.Exceptions)
+    writeVar(Strings.index(Exception), OS);
+
+  writeVar(Doc.Todos.size(), OS);
+  for (const auto &Todo : Doc.Todos)
+    writeVar(Strings.index(Todo), OS);
+
+  writeVar(Doc.Bugs.size(), OS);
+  for (const auto &Bug : Doc.Bugs)
+    writeVar(Strings.index(Bug), OS);
+
   writeVar(Doc.Parameters.size(), OS);
   for (const auto &ParamDoc : Doc.Parameters) {
+    writeVar(Strings.index(ParamDoc.Name), OS);
+    writeVar(Strings.index(ParamDoc.Description), OS);
+  }
+
+  writeVar(Doc.TemplateParameters.size(), OS);
+  for (const auto &ParamDoc : Doc.TemplateParameters) {
     writeVar(Strings.index(ParamDoc.Name), OS);
     writeVar(Strings.index(ParamDoc.Description), OS);
   }
@@ -311,6 +330,7 @@ SymbolDocumentationRef
 readSymbolDocumentation(Reader &Data, llvm::ArrayRef<llvm::StringRef> Strings) {
   SymbolDocumentationRef Doc;
   Doc.Brief = Data.consumeString(Strings);
+  Doc.Details = Data.consumeString(Strings);
   Doc.Returns = Data.consumeString(Strings);
 
   if (!Data.consumeSize(Doc.Notes))
@@ -323,9 +343,29 @@ readSymbolDocumentation(Reader &Data, llvm::ArrayRef<llvm::StringRef> Strings) {
   for (auto &Warning : Doc.Warnings)
     Warning = Data.consumeString(Strings);
 
+  if (!Data.consumeSize(Doc.Exceptions))
+    return Doc;
+  for (auto &Exception : Doc.Exceptions)
+    Exception = Data.consumeString(Strings);
+
+  if (!Data.consumeSize(Doc.Todos))
+    return Doc;
+  for (auto &Todo : Doc.Todos)
+    Todo = Data.consumeString(Strings);
+
+  if (!Data.consumeSize(Doc.Bugs))
+    return Doc;
+  for (auto &Bug : Doc.Bugs)
+    Bug = Data.consumeString(Strings);
+
   if (!Data.consumeSize(Doc.Parameters))
     return Doc;
   for (auto &ParamDoc : Doc.Parameters)
+    ParamDoc = {Data.consumeString(Strings), Data.consumeString(Strings)};
+
+  if (!Data.consumeSize(Doc.TemplateParameters))
+    return Doc;
+  for (auto &ParamDoc : Doc.TemplateParameters)
     ParamDoc = {Data.consumeString(Strings), Data.consumeString(Strings)};
 
   Doc.Description = Data.consumeString(Strings);

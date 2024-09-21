@@ -175,12 +175,23 @@ template <typename Callback> void visitStrings(Symbol &S, const Callback &CB) {
   CB(S.CompletionSnippetSuffix);
 
   CB(S.Documentation.Brief);
+  CB(S.Documentation.Details);
   CB(S.Documentation.Returns);
   for (auto &Note : S.Documentation.Notes)
     CB(Note);
   for (auto &Warning : S.Documentation.Warnings)
     CB(Warning);
+  for (auto &Exception : S.Documentation.Exceptions)
+    CB(Exception);
+  for (auto &Todo : S.Documentation.Todos)
+    CB(Todo);
+  for (auto &Bug : S.Documentation.Bugs)
+    CB(Bug);
   for (auto &ParamDoc : S.Documentation.Parameters) {
+    CB(ParamDoc.Name);
+    CB(ParamDoc.Description);
+  }
+  for (auto &ParamDoc : S.Documentation.TemplateParameters) {
     CB(ParamDoc.Name);
     CB(ParamDoc.Description);
   }

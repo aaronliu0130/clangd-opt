@@ -207,6 +207,11 @@ static cl::opt<unsigned> VectorizeMemoryCheckThreshold(
     "vectorize-memory-check-threshold", cl::init(128), cl::Hidden,
     cl::desc("The maximum allowed number of runtime memory checks"));
 
+static cl::opt<bool> UseLegacyCostModel(
+    "vectorize-use-legacy-cost-model", cl::init(true), cl::Hidden,
+    cl::desc("Use the legacy cost model instead of the VPlan-based cost model. "
+             "This option will be removed in the future."));
+
 // Option prefer-predicate-over-epilogue indicates that an epilogue is undesired,
 // that predication is preferred, and this lists all options. I.e., the
 // vectorizer will try to fold the tail-loop (epilogue) into the vector body

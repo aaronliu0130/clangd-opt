@@ -1365,8 +1365,99 @@ bool InferAddressSpacesImpl::rewriteWithNewAddressSpaces(
       // to the next instruction.
       I = skipToNextUser(I, E);
 
-      performPointerReplacement(V, NewV, U, ValueWithNewAddrSpace,
-                                DeadInstructions);
+      if (isSimplePointerUseValidToReplace(
+              *TTI, U, V->getType()->getPointerAddressSpace())) {
+        // If V is used as the pointer operand of a compatible memory operation,
+        // sets the pointer operand to NewV. This replacement does not change
+        // the element type, so the resultant load/store is still valid.
+        U.set(NewV);
+        continue;
+      }
+
+      // Skip if the current user is the new value itself.
+      if (CurUser == NewV)
+        continue;
+
+      if (auto *CurUserI = dyn_cast<Instruction>(CurUser);
+          CurUserI && CurUserI->getFunction() != F)
+        continue;
+
+      // Handle more complex cases like intrinsic that need to be remangled.
+      if (auto *MI = dyn_cast<MemIntrinsic>(CurUser)) {
+        if (!MI->isVolatile() && handleMemIntrinsicPtrUse(MI, V, NewV))
+          continue;
+      }
+
+      if (auto *II = dyn_cast<IntrinsicInst>(CurUser)) {
+        if (rewriteIntrinsicOperands(II, V, NewV))
+          continue;
+      }
+
+      if (isa<Instruction>(CurUser)) {
+        if (ICmpInst *Cmp = dyn_cast<ICmpInst>(CurUser)) {
+          // If we can infer that both pointers are in the same addrspace,
+          // transform e.g.
+          //   %cmp = icmp eq float* %p, %q
+          // into
+          //   %cmp = icmp eq float addrspace(3)* %new_p, %new_q
+
+          unsigned NewAS = NewV->getType()->getPointerAddressSpace();
+          int SrcIdx = U.getOperandNo();
+          int OtherIdx = (SrcIdx == 0) ? 1 : 0;
+          Value *OtherSrc = Cmp->getOperand(OtherIdx);
+
+          if (Value *OtherNewV = ValueWithNewAddrSpace.lookup(OtherSrc)) {
+            if (OtherNewV->getType()->getPointerAddressSpace() == NewAS) {
+              Cmp->setOperand(OtherIdx, OtherNewV);
+              Cmp->setOperand(SrcIdx, NewV);
+              continue;
+            }
+          }
+
+          // Even if the type mismatches, we can cast the constant.
+          if (auto *KOtherSrc = dyn_cast<Constant>(OtherSrc)) {
+            if (isSafeToCastConstAddrSpace(KOtherSrc, NewAS)) {
+              Cmp->setOperand(SrcIdx, NewV);
+              Cmp->setOperand(OtherIdx, ConstantExpr::getAddrSpaceCast(
+                                            KOtherSrc, NewV->getType()));
+              continue;
+            }
+          }
+        }
+
+        if (AddrSpaceCastInst *ASC = dyn_cast<AddrSpaceCastInst>(CurUser)) {
+          unsigned NewAS = NewV->getType()->getPointerAddressSpace();
+          if (ASC->getDestAddressSpace() == NewAS) {
+            ASC->replaceAllUsesWith(NewV);
+            DeadInstructions.push_back(ASC);
+            continue;
+          }
+        }
+
+        // Otherwise, replaces the use with flat(NewV).
+        if (Instruction *VInst = dyn_cast<Instruction>(V)) {
+          // Don't create a copy of the original addrspacecast.
+          if (U == V && isa<AddrSpaceCastInst>(V))
+            continue;
+
+          // Insert the addrspacecast after NewV.
+          BasicBlock::iterator InsertPos;
+          if (Instruction *NewVInst = dyn_cast<Instruction>(NewV))
+            InsertPos = std::next(NewVInst->getIterator());
+          else
+            InsertPos = std::next(VInst->getIterator());
+
+          while (isa<PHINode>(InsertPos))
+            ++InsertPos;
+          // This instruction may contain multiple uses of V, update them all.
+          CurUser->replaceUsesOfWith(
+              V, new AddrSpaceCastInst(NewV, V->getType(), "", InsertPos));
+        } else {
+          CurUser->replaceUsesOfWith(
+              V, ConstantExpr::getAddrSpaceCast(cast<Constant>(NewV),
+                                                V->getType()));
+        }
+      }
     }
 
     if (V->use_empty()) {

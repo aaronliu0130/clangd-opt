@@ -1,7 +1,4 @@
-add_llvm_component_library(LLVMCGData
-  CodeGenData.cpp
-  CodeGenDataReader.cpp
-  CodeGenDataWriter.cpp
+add_llvm_component_library(LLVMCodeGenData
   OutlinedHashTree.cpp
   OutlinedHashTreeRecord.cpp
 

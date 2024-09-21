@@ -358,6 +358,98 @@ The following options allow building libc++ for a different ABI version.
 
   Additional libraries libc++abi is linked to which can be provided in cache.
 
+
+libc++ Feature Options
+----------------------
+
+.. option:: LIBCXX_ENABLE_EXCEPTIONS:BOOL
+
+  **Default**: ``ON``
+
+  Build libc++ with exception support.
+
+.. option:: LIBCXX_ENABLE_RTTI:BOOL
+
+  **Default**: ``ON``
+
+  Build libc++ with run time type information.
+  This option may only be set to OFF when LIBCXX_ENABLE_EXCEPTIONS=OFF.
+
+.. option:: LIBCXX_INCLUDE_TESTS:BOOL
+
+  **Default**: ``ON`` (or value of ``LLVM_INCLUDE_TESTS``)
+
+  Build the libc++ tests.
+
+.. option:: LIBCXX_INCLUDE_BENCHMARKS:BOOL
+
+  **Default**: ``ON``
+
+  Build the libc++ benchmark tests and the Google Benchmark library needed
+  to support them.
+
+.. option:: LIBCXX_BENCHMARK_TEST_ARGS:STRING
+
+  **Default**: ``--benchmark_min_time=0.01``
+
+  A semicolon list of arguments to pass when running the libc++ benchmarks using the
+  ``check-cxx-benchmarks`` rule. By default we run the benchmarks for a very short amount of time,
+  since the primary use of ``check-cxx-benchmarks`` is to get test and sanitizer coverage, not to
+  get accurate measurements.
+
+.. option:: LIBCXX_ASSERTION_HANDLER_FILE:PATH
+
+  **Default**:: ``"${CMAKE_CURRENT_SOURCE_DIR}/vendor/llvm/default_assertion_handler.in"``
+
+  Specify the path to a header that contains a custom implementation of the
+  assertion handler that gets invoked when a hardening assertion fails. If
+  provided, this header will be included by the library, replacing the
+  default assertion handler. If this is specified as a relative path, it
+  is assumed to be relative to ``<monorepo>/libcxx``.
+
+
+libc++ ABI Feature Options
+--------------------------
+
+The following options allow building libc++ for a different ABI version.
+
+.. option:: LIBCXX_ABI_VERSION:STRING
+
+  **Default**: ``1``
+
+  Defines the target ABI version of libc++.
+
+.. option:: LIBCXX_ABI_UNSTABLE:BOOL
+
+  **Default**: ``OFF``
+
+  Build the "unstable" ABI version of libc++. Includes all ABI changing features
+  on top of the current stable version.
+
+.. option:: LIBCXX_ABI_NAMESPACE:STRING
+
+  **Default**: ``__n`` where ``n`` is the current ABI version.
+
+  This option defines the name of the inline ABI versioning namespace. It can be used for building
+  custom versions of libc++ with unique symbol names in order to prevent conflicts or ODR issues
+  with other libc++ versions.
+
+  .. warning::
+    When providing a custom namespace, it's the user's responsibility to ensure the name won't cause
+    conflicts with other names defined by libc++, both now and in the future. In particular, inline
+    namespaces of the form ``__[0-9]+`` could cause conflicts with future versions of the library,
+    and so should be avoided.
+
+.. option:: LIBCXX_ABI_DEFINES:STRING
+
+  **Default**: ``""``
+
+  A semicolon-separated list of ABI macros to persist in the site config header.
+  See ``include/__config`` for the list of ABI macros.
+
+
+.. _LLVM-specific variables:
+
 LLVM-specific options
 ---------------------
 

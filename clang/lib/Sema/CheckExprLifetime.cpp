@@ -544,6 +544,12 @@ static void visitLocalsRetainedByReferenceBinding(IndirectLocalPath &Path,
                                        EnableLifetimeWarnings);
   }
 
+  if (isa<CallExpr>(Init)) {
+    if (EnableLifetimeWarnings)
+      handleGslAnnotatedTypes(Path, Init, Visit);
+    return visitLifetimeBoundArguments(Path, Init, Visit);
+  }
+
   if (isa<CallExpr>(Init))
     return visitFunctionCallArguments(Path, Init, Visit,
                                       EnableLifetimeWarnings);

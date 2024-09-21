@@ -23,7 +23,6 @@
 
 #include <wchar.h>
 
-using namespace __nsan;
 using namespace __sanitizer;
 
 template <typename T> T min(T a, T b) { return a < b ? a : b; }

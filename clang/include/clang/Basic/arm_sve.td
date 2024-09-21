@@ -2180,9 +2180,9 @@ multiclass BfSingleMultiVector<string name> {
   def NAME # _X4 : SInst<"sv" # name # "[_{d}_x4]", "444", "b", MergeNone, "aarch64_sve_f" # name # "_x4", [IsStreaming], []>;
 }
 
-let SVETargetGuard = InvalidMode, SMETargetGuard = "sme2,sve-b16b16"in {
-  def SVBFCLAMP_X2 : SInst<"svclamp[_single_{d}_x2]",  "22dd",   "b", MergeNone, "aarch64_sve_bfclamp_single_x2",  [IsStreaming], []>;
-  def SVBFCLAMP_X4 : SInst<"svclamp[_single_{d}_x4]",  "44dd",   "b", MergeNone, "aarch64_sve_bfclamp_single_x4",  [IsStreaming], []>;
+let SVETargetGuard = InvalidMode, SMETargetGuard = "sme2,b16b16"in {
+  def SVBFCLAMP_X2 : SInst<"svclamp[_single_{d}_x2]",  "22dd",   "b",      MergeNone, "aarch64_sve_bfclamp_single_x2",  [IsStreaming], []>;
+  def SVBFCLAMP_X4 : SInst<"svclamp[_single_{d}_x4]",  "44dd",   "b",      MergeNone, "aarch64_sve_bfclamp_single_x4",  [IsStreaming], []>;
 
   // bfmin, bfmax (single, multi)
   defm SVBFMIN : BfSingleMultiVector<"min">;

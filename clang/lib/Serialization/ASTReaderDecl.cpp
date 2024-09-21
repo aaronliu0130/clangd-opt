@@ -3693,9 +3693,14 @@ static void inheritDefaultTemplateArguments(ASTContext &Context,
 // [basic.link]/p10:
 //    If two declarations of an entity are attached to different modules,
 //    the program is ill-formed;
-void ASTDeclReader::checkMultipleDefinitionInNamedModules(ASTReader &Reader,
-                                                          Decl *D,
-                                                          Decl *Previous) {
+static void checkMultipleDefinitionInNamedModules(ASTReader &Reader, Decl *D,
+                                                  Decl *Previous) {
+  Module *M = Previous->getOwningModule();
+
+  // We only care about the case in named modules.
+  if (!M || !M->isNamedModule())
+    return;
+
   // If it is previous implcitly introduced, it is not meaningful to
   // diagnose it.
   if (Previous->isImplicit())
@@ -3712,32 +3717,16 @@ void ASTDeclReader::checkMultipleDefinitionInNamedModules(ASTReader &Reader,
   // FIXME: Maybe this shows the implicit instantiations may have incorrect
   // module owner ships. But given we've finished the compilation of a module,
   // how can we add new entities to that module?
-  if (isa<VarTemplateSpecializationDecl>(Previous))
+  if (auto *VTSD = dyn_cast<VarTemplateSpecializationDecl>(Previous);
+      VTSD && !VTSD->isExplicitSpecialization())
     return;
-  if (isa<ClassTemplateSpecializationDecl>(Previous))
+  if (auto *CTSD = dyn_cast<ClassTemplateSpecializationDecl>(Previous);
+      CTSD && !CTSD->isExplicitSpecialization())
     return;
-  if (auto *Func = dyn_cast<FunctionDecl>(Previous);
-      Func && Func->getTemplateSpecializationInfo())
-    return;
-
-  Module *M = Previous->getOwningModule();
-  if (!M)
-    return;
-
-  // We only forbids merging decls within named modules.
-  if (!M->isNamedModule()) {
-    // Try to warn the case that we merged decls from global module.
-    if (!M->isGlobalModule())
+  if (auto *Func = dyn_cast<FunctionDecl>(Previous))
+    if (auto *FTSI = Func->getTemplateSpecializationInfo();
+        FTSI && !FTSI->isExplicitSpecialization())
       return;
-
-    if (D->getOwningModule() &&
-        M->getTopLevelModule() == D->getOwningModule()->getTopLevelModule())
-      return;
-
-    Reader.PendingWarningForDuplicatedDefsInModuleUnits.push_back(
-        {D, Previous});
-    return;
-  }
 
   // It is fine if they are in the same module.
   if (Reader.getContext().isInSameModule(M, D->getOwningModule()))

@@ -65,8 +65,7 @@ private:
 
   void handleGlobalOp(fir::GlobalOp glocalOp, mlir::LLVM::DIFileAttr fileAttr,
                       mlir::LLVM::DIScopeAttr scope,
-                      mlir::SymbolTable *symbolTable,
-                      fir::cg::XDeclareOp declOp);
+                      mlir::SymbolTable *symbolTable);
   void handleFuncOp(mlir::func::FuncOp funcOp, mlir::LLVM::DIFileAttr fileAttr,
                     mlir::LLVM::DICompileUnitAttr cuAttr,
                     mlir::SymbolTable *symbolTable);
@@ -247,13 +246,12 @@ void AddDebugInfoPass::handleFuncOp(mlir::func::FuncOp funcOp,
   llvm::SmallVector<mlir::LLVM::DITypeAttr> types;
   fir::DebugTypeGenerator typeGen(module);
   for (auto resTy : funcOp.getResultTypes()) {
-    auto tyAttr =
-        typeGen.convertType(resTy, fileAttr, cuAttr, /*declOp=*/nullptr);
+    auto tyAttr = typeGen.convertType(resTy, fileAttr, cuAttr, funcOp.getLoc());
     types.push_back(tyAttr);
   }
   for (auto inTy : funcOp.getArgumentTypes()) {
     auto tyAttr = typeGen.convertType(fir::unwrapRefType(inTy), fileAttr,
-                                      cuAttr, /*declOp=*/nullptr);
+                                      cuAttr, funcOp.getLoc());
     types.push_back(tyAttr);
   }
 

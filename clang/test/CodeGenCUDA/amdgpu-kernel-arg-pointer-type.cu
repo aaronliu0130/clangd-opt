@@ -15,140 +15,24 @@
 
 // On the host-side compilation, generic pointer won't be coerced.
 
-// CHECK-LABEL: define dso_local amdgpu_kernel void @_Z7kernel1Pi(
-// CHECK-SAME: ptr addrspace(1) noundef [[X_COERCE:%.*]]) #[[ATTR0:[0-9]+]] {
-// CHECK-NEXT:  [[ENTRY:.*:]]
-// CHECK-NEXT:    [[X:%.*]] = alloca ptr, align 8, addrspace(5)
-// CHECK-NEXT:    [[X_ADDR:%.*]] = alloca ptr, align 8, addrspace(5)
-// CHECK-NEXT:    [[X_ASCAST:%.*]] = addrspacecast ptr addrspace(5) [[X]] to ptr
-// CHECK-NEXT:    [[X_ADDR_ASCAST:%.*]] = addrspacecast ptr addrspace(5) [[X_ADDR]] to ptr
-// CHECK-NEXT:    store ptr addrspace(1) [[X_COERCE]], ptr [[X_ASCAST]], align 8
-// CHECK-NEXT:    [[X1:%.*]] = load ptr, ptr [[X_ASCAST]], align 8
-// CHECK-NEXT:    store ptr [[X1]], ptr [[X_ADDR_ASCAST]], align 8
-// CHECK-NEXT:    [[TMP0:%.*]] = load ptr, ptr [[X_ADDR_ASCAST]], align 8
-// CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds i32, ptr [[TMP0]], i64 0
-// CHECK-NEXT:    [[TMP1:%.*]] = load i32, ptr [[ARRAYIDX]], align 4
-// CHECK-NEXT:    [[INC:%.*]] = add nsw i32 [[TMP1]], 1
-// CHECK-NEXT:    store i32 [[INC]], ptr [[ARRAYIDX]], align 4
-// CHECK-NEXT:    ret void
-//
-// CHECK-SPIRV-LABEL: define spir_kernel void @_Z7kernel1Pi(
-// CHECK-SPIRV-SAME: ptr addrspace(1) noundef [[X_COERCE:%.*]]) addrspace(4) #[[ATTR0:[0-9]+]] {
-// CHECK-SPIRV-NEXT:  [[ENTRY:.*:]]
-// CHECK-SPIRV-NEXT:    [[X:%.*]] = alloca ptr addrspace(4), align 8
-// CHECK-SPIRV-NEXT:    [[X_ADDR:%.*]] = alloca ptr addrspace(4), align 8
-// CHECK-SPIRV-NEXT:    [[X_ASCAST:%.*]] = addrspacecast ptr [[X]] to ptr addrspace(4)
-// CHECK-SPIRV-NEXT:    [[X_ADDR_ASCAST:%.*]] = addrspacecast ptr [[X_ADDR]] to ptr addrspace(4)
-// CHECK-SPIRV-NEXT:    store ptr addrspace(1) [[X_COERCE]], ptr addrspace(4) [[X_ASCAST]], align 8
-// CHECK-SPIRV-NEXT:    [[X1:%.*]] = load ptr addrspace(4), ptr addrspace(4) [[X_ASCAST]], align 8
-// CHECK-SPIRV-NEXT:    store ptr addrspace(4) [[X1]], ptr addrspace(4) [[X_ADDR_ASCAST]], align 8
-// CHECK-SPIRV-NEXT:    [[TMP0:%.*]] = load ptr addrspace(4), ptr addrspace(4) [[X_ADDR_ASCAST]], align 8
-// CHECK-SPIRV-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds i32, ptr addrspace(4) [[TMP0]], i64 0
-// CHECK-SPIRV-NEXT:    [[TMP1:%.*]] = load i32, ptr addrspace(4) [[ARRAYIDX]], align 4
-// CHECK-SPIRV-NEXT:    [[INC:%.*]] = add nsw i32 [[TMP1]], 1
-// CHECK-SPIRV-NEXT:    store i32 [[INC]], ptr addrspace(4) [[ARRAYIDX]], align 4
-// CHECK-SPIRV-NEXT:    ret void
-//
-// OPT-LABEL: define dso_local amdgpu_kernel void @_Z7kernel1Pi(
-// OPT-SAME: ptr addrspace(1) nocapture noundef [[X_COERCE:%.*]]) local_unnamed_addr #[[ATTR0:[0-9]+]] {
-// OPT-NEXT:  [[ENTRY:.*:]]
-// OPT-NEXT:    [[TMP0:%.*]] = load i32, ptr addrspace(1) [[X_COERCE]], align 4
-// OPT-NEXT:    [[INC:%.*]] = add nsw i32 [[TMP0]], 1
-// OPT-NEXT:    store i32 [[INC]], ptr addrspace(1) [[X_COERCE]], align 4
-// OPT-NEXT:    ret void
-//
-// OPT-SPIRV-LABEL: define spir_kernel void @_Z7kernel1Pi(
-// OPT-SPIRV-SAME: ptr addrspace(1) noundef [[X_COERCE:%.*]]) local_unnamed_addr addrspace(4) #[[ATTR0:[0-9]+]] {
-// OPT-SPIRV-NEXT:  [[ENTRY:.*:]]
-// OPT-SPIRV-NEXT:    [[TMP0:%.*]] = ptrtoint ptr addrspace(1) [[X_COERCE]] to i64
-// OPT-SPIRV-NEXT:    [[TMP1:%.*]] = inttoptr i64 [[TMP0]] to ptr addrspace(4)
-// OPT-SPIRV-NEXT:    [[TMP2:%.*]] = load i32, ptr addrspace(4) [[TMP1]], align 4
-// OPT-SPIRV-NEXT:    [[INC:%.*]] = add nsw i32 [[TMP2]], 1
-// OPT-SPIRV-NEXT:    store i32 [[INC]], ptr addrspace(4) [[TMP1]], align 4
-// OPT-SPIRV-NEXT:    ret void
-//
-// HOST-LABEL: define dso_local void @_Z22__device_stub__kernel1Pi(
-// HOST-SAME: ptr noundef [[X:%.*]]) #[[ATTR0:[0-9]+]] {
-// HOST-NEXT:  [[ENTRY:.*:]]
-// HOST-NEXT:    [[X_ADDR:%.*]] = alloca ptr, align 8
-// HOST-NEXT:    store ptr [[X]], ptr [[X_ADDR]], align 8
-// HOST-NEXT:    [[TMP0:%.*]] = call i32 @hipSetupArgument(ptr [[X_ADDR]], i64 8, i64 0)
-// HOST-NEXT:    [[TMP1:%.*]] = icmp eq i32 [[TMP0]], 0
-// HOST-NEXT:    br i1 [[TMP1]], label %[[SETUP_NEXT:.*]], label %[[SETUP_END:.*]]
-// HOST:       [[SETUP_NEXT]]:
-// HOST-NEXT:    [[TMP2:%.*]] = call i32 @hipLaunchByPtr(ptr @_Z7kernel1Pi)
-// HOST-NEXT:    br label %[[SETUP_END]]
-// HOST:       [[SETUP_END]]:
-// HOST-NEXT:    ret void
-//
+// HOST: define{{.*}} void @_Z22__device_stub__kernel1Pi(ptr noundef %x)
+// COMMON-LABEL: define{{.*}} amdgpu_kernel void @_Z7kernel1Pi(ptr addrspace(1){{.*}} %x.coerce)
+// CHECK-NOT: ={{.*}} addrspacecast ptr addrspace(1) %{{.*}} to ptr
+// OPT: [[VAL:%.*]] = load i32, ptr addrspace(1) %x.coerce, align 4{{$}}
+// OPT: [[INC:%.*]] = add nsw i32 [[VAL]], 1
+// OPT: store i32 [[INC]], ptr addrspace(1) %x.coerce, align 4
+// OPT: ret void
 __global__ void kernel1(int *x) {
   x[0]++;
 }
 
-// CHECK-LABEL: define dso_local amdgpu_kernel void @_Z7kernel2Ri(
-// CHECK-SAME: ptr addrspace(1) noundef nonnull align 4 dereferenceable(4) [[X_COERCE:%.*]]) #[[ATTR0]] {
-// CHECK-NEXT:  [[ENTRY:.*:]]
-// CHECK-NEXT:    [[X:%.*]] = alloca ptr, align 8, addrspace(5)
-// CHECK-NEXT:    [[X_ADDR:%.*]] = alloca ptr, align 8, addrspace(5)
-// CHECK-NEXT:    [[X_ASCAST:%.*]] = addrspacecast ptr addrspace(5) [[X]] to ptr
-// CHECK-NEXT:    [[X_ADDR_ASCAST:%.*]] = addrspacecast ptr addrspace(5) [[X_ADDR]] to ptr
-// CHECK-NEXT:    store ptr addrspace(1) [[X_COERCE]], ptr [[X_ASCAST]], align 8
-// CHECK-NEXT:    [[X1:%.*]] = load ptr, ptr [[X_ASCAST]], align 8
-// CHECK-NEXT:    store ptr [[X1]], ptr [[X_ADDR_ASCAST]], align 8
-// CHECK-NEXT:    [[TMP0:%.*]] = load ptr, ptr [[X_ADDR_ASCAST]], align 8
-// CHECK-NEXT:    [[TMP1:%.*]] = load i32, ptr [[TMP0]], align 4
-// CHECK-NEXT:    [[INC:%.*]] = add nsw i32 [[TMP1]], 1
-// CHECK-NEXT:    store i32 [[INC]], ptr [[TMP0]], align 4
-// CHECK-NEXT:    ret void
-//
-// CHECK-SPIRV-LABEL: define spir_kernel void @_Z7kernel2Ri(
-// CHECK-SPIRV-SAME: ptr addrspace(1) noundef align 4 dereferenceable(4) [[X_COERCE:%.*]]) addrspace(4) #[[ATTR0]] {
-// CHECK-SPIRV-NEXT:  [[ENTRY:.*:]]
-// CHECK-SPIRV-NEXT:    [[X:%.*]] = alloca ptr addrspace(4), align 8
-// CHECK-SPIRV-NEXT:    [[X_ADDR:%.*]] = alloca ptr addrspace(4), align 8
-// CHECK-SPIRV-NEXT:    [[X_ASCAST:%.*]] = addrspacecast ptr [[X]] to ptr addrspace(4)
-// CHECK-SPIRV-NEXT:    [[X_ADDR_ASCAST:%.*]] = addrspacecast ptr [[X_ADDR]] to ptr addrspace(4)
-// CHECK-SPIRV-NEXT:    store ptr addrspace(1) [[X_COERCE]], ptr addrspace(4) [[X_ASCAST]], align 8
-// CHECK-SPIRV-NEXT:    [[X1:%.*]] = load ptr addrspace(4), ptr addrspace(4) [[X_ASCAST]], align 8
-// CHECK-SPIRV-NEXT:    store ptr addrspace(4) [[X1]], ptr addrspace(4) [[X_ADDR_ASCAST]], align 8
-// CHECK-SPIRV-NEXT:    [[TMP0:%.*]] = load ptr addrspace(4), ptr addrspace(4) [[X_ADDR_ASCAST]], align 8
-// CHECK-SPIRV-NEXT:    [[TMP1:%.*]] = load i32, ptr addrspace(4) [[TMP0]], align 4
-// CHECK-SPIRV-NEXT:    [[INC:%.*]] = add nsw i32 [[TMP1]], 1
-// CHECK-SPIRV-NEXT:    store i32 [[INC]], ptr addrspace(4) [[TMP0]], align 4
-// CHECK-SPIRV-NEXT:    ret void
-//
-// OPT-LABEL: define dso_local amdgpu_kernel void @_Z7kernel2Ri(
-// OPT-SAME: ptr addrspace(1) nocapture noundef nonnull align 4 dereferenceable(4) [[X_COERCE:%.*]]) local_unnamed_addr #[[ATTR0]] {
-// OPT-NEXT:  [[ENTRY:.*:]]
-// OPT-NEXT:    [[TMP0:%.*]] = load i32, ptr addrspace(1) [[X_COERCE]], align 4
-// OPT-NEXT:    [[INC:%.*]] = add nsw i32 [[TMP0]], 1
-// OPT-NEXT:    store i32 [[INC]], ptr addrspace(1) [[X_COERCE]], align 4
-// OPT-NEXT:    ret void
-//
-// OPT-SPIRV-LABEL: define spir_kernel void @_Z7kernel2Ri(
-// OPT-SPIRV-SAME: ptr addrspace(1) noundef align 4 dereferenceable(4) [[X_COERCE:%.*]]) local_unnamed_addr addrspace(4) #[[ATTR0]] {
-// OPT-SPIRV-NEXT:  [[ENTRY:.*:]]
-// OPT-SPIRV-NEXT:    [[TMP0:%.*]] = ptrtoint ptr addrspace(1) [[X_COERCE]] to i64
-// OPT-SPIRV-NEXT:    [[TMP1:%.*]] = inttoptr i64 [[TMP0]] to ptr addrspace(4)
-// OPT-SPIRV-NEXT:    [[TMP2:%.*]] = load i32, ptr addrspace(4) [[TMP1]], align 4
-// OPT-SPIRV-NEXT:    [[INC:%.*]] = add nsw i32 [[TMP2]], 1
-// OPT-SPIRV-NEXT:    store i32 [[INC]], ptr addrspace(4) [[TMP1]], align 4
-// OPT-SPIRV-NEXT:    ret void
-//
-// HOST-LABEL: define dso_local void @_Z22__device_stub__kernel2Ri(
-// HOST-SAME: ptr noundef nonnull align 4 dereferenceable(4) [[X:%.*]]) #[[ATTR0]] {
-// HOST-NEXT:  [[ENTRY:.*:]]
-// HOST-NEXT:    [[X_ADDR:%.*]] = alloca ptr, align 8
-// HOST-NEXT:    store ptr [[X]], ptr [[X_ADDR]], align 8
-// HOST-NEXT:    [[TMP0:%.*]] = call i32 @hipSetupArgument(ptr [[X_ADDR]], i64 8, i64 0)
-// HOST-NEXT:    [[TMP1:%.*]] = icmp eq i32 [[TMP0]], 0
-// HOST-NEXT:    br i1 [[TMP1]], label %[[SETUP_NEXT:.*]], label %[[SETUP_END:.*]]
-// HOST:       [[SETUP_NEXT]]:
-// HOST-NEXT:    [[TMP2:%.*]] = call i32 @hipLaunchByPtr(ptr @_Z7kernel2Ri)
-// HOST-NEXT:    br label %[[SETUP_END]]
-// HOST:       [[SETUP_END]]:
-// HOST-NEXT:    ret void
-//
+// HOST: define{{.*}} void @_Z22__device_stub__kernel2Ri(ptr noundef nonnull align 4 dereferenceable(4) %x)
+// COMMON-LABEL: define{{.*}} amdgpu_kernel void @_Z7kernel2Ri(ptr addrspace(1){{.*}} nonnull align 4 dereferenceable(4) %x.coerce)
+// CHECK-NOT: ={{.*}} addrspacecast ptr addrspace(1) %{{.*}} to ptr
+// OPT: [[VAL:%.*]] = load i32, ptr addrspace(1) %x.coerce, align 4{{$}}
+// OPT: [[INC:%.*]] = add nsw i32 [[VAL]], 1
+// OPT: store i32 [[INC]], ptr addrspace(1) %x.coerce, align 4
+// OPT: ret void
 __global__ void kernel2(int &x) {
   x++;
 }
@@ -372,6 +256,20 @@ struct S {
 // HOST:       [[SETUP_END]]:
 // HOST-NEXT:    ret void
 //
+// HOST: define{{.*}} void @_Z22__device_stub__kernel41S(ptr %s.coerce0, ptr %s.coerce1)
+// COMMON-LABEL: define{{.*}} amdgpu_kernel void @_Z7kernel41S(ptr addrspace(4){{.*}} byref(%struct.S) align 8 %0)
+// OPT: [[P0:%.*]] = load ptr, ptr addrspace(4) %0, align 8
+// OPT: [[G0:%.*]] ={{.*}} addrspacecast ptr [[P0]] to ptr addrspace(1)
+// OPT: [[R1:%.*]] = getelementptr inbounds i8, ptr addrspace(4) %0, i64 8
+// OPT: [[P1:%.*]] = load ptr, ptr addrspace(4) [[R1]], align 8
+// OPT: [[G1:%.*]] ={{.*}} addrspacecast ptr [[P1]] to ptr addrspace(1)
+// OPT: [[V0:%.*]] = load i32, ptr addrspace(1) [[G0]], align 4, !amdgpu.noclobber ![[MD:[0-9]+]]
+// OPT: [[INC:%.*]] = add nsw i32 [[V0]], 1
+// OPT: store i32 [[INC]], ptr addrspace(1) [[G0]], align 4
+// OPT: [[V1:%.*]] = load float, ptr addrspace(1) [[G1]], align 4
+// OPT: [[ADD:%.*]] = fadd contract float [[V1]], 1.000000e+00
+// OPT: store float [[ADD]], ptr addrspace(1) [[G1]], align 4
+// OPT: ret void
 __global__ void kernel4(struct S s) {
   s.x[0]++;
   s.y[0] += 1.f;
@@ -662,67 +560,13 @@ __global__ void kernel7(int *__restrict x) {
 struct SS {
   float *x;
 };
-// CHECK-LABEL: define dso_local amdgpu_kernel void @_Z7kernel82SS(
-// CHECK-SAME: ptr addrspace(1) [[A_COERCE:%.*]]) #[[ATTR0]] {
-// CHECK-NEXT:  [[ENTRY:.*:]]
-// CHECK-NEXT:    [[A:%.*]] = alloca [[STRUCT_SS:%.*]], align 8, addrspace(5)
-// CHECK-NEXT:    [[A1:%.*]] = addrspacecast ptr addrspace(5) [[A]] to ptr
-// CHECK-NEXT:    [[COERCE_DIVE:%.*]] = getelementptr inbounds nuw [[STRUCT_SS]], ptr [[A1]], i32 0, i32 0
-// CHECK-NEXT:    store ptr addrspace(1) [[A_COERCE]], ptr [[COERCE_DIVE]], align 8
-// CHECK-NEXT:    [[X:%.*]] = getelementptr inbounds nuw [[STRUCT_SS]], ptr [[A1]], i32 0, i32 0
-// CHECK-NEXT:    [[TMP0:%.*]] = load ptr, ptr [[X]], align 8
-// CHECK-NEXT:    [[TMP1:%.*]] = load float, ptr [[TMP0]], align 4
-// CHECK-NEXT:    [[ADD:%.*]] = fadd contract float [[TMP1]], 3.000000e+00
-// CHECK-NEXT:    store float [[ADD]], ptr [[TMP0]], align 4
-// CHECK-NEXT:    ret void
-//
-// CHECK-SPIRV-LABEL: define spir_kernel void @_Z7kernel82SS(
-// CHECK-SPIRV-SAME: [[STRUCT_SS:%.*]] [[A_COERCE:%.*]]) addrspace(4) #[[ATTR0]] {
-// CHECK-SPIRV-NEXT:  [[ENTRY:.*:]]
-// CHECK-SPIRV-NEXT:    [[A:%.*]] = alloca [[STRUCT_SS]], align 8
-// CHECK-SPIRV-NEXT:    [[A1:%.*]] = addrspacecast ptr [[A]] to ptr addrspace(4)
-// CHECK-SPIRV-NEXT:    [[TMP0:%.*]] = getelementptr inbounds nuw [[STRUCT_SS]], ptr addrspace(4) [[A1]], i32 0, i32 0
-// CHECK-SPIRV-NEXT:    [[TMP1:%.*]] = extractvalue [[STRUCT_SS]] [[A_COERCE]], 0
-// CHECK-SPIRV-NEXT:    store ptr addrspace(4) [[TMP1]], ptr addrspace(4) [[TMP0]], align 8
-// CHECK-SPIRV-NEXT:    [[X:%.*]] = getelementptr inbounds nuw [[STRUCT_SS]], ptr addrspace(4) [[A1]], i32 0, i32 0
-// CHECK-SPIRV-NEXT:    [[TMP2:%.*]] = load ptr addrspace(4), ptr addrspace(4) [[X]], align 8
-// CHECK-SPIRV-NEXT:    [[TMP3:%.*]] = load float, ptr addrspace(4) [[TMP2]], align 4
-// CHECK-SPIRV-NEXT:    [[ADD:%.*]] = fadd contract float [[TMP3]], 3.000000e+00
-// CHECK-SPIRV-NEXT:    store float [[ADD]], ptr addrspace(4) [[TMP2]], align 4
-// CHECK-SPIRV-NEXT:    ret void
-//
-// OPT-LABEL: define dso_local amdgpu_kernel void @_Z7kernel82SS(
-// OPT-SAME: ptr addrspace(1) nocapture [[A_COERCE:%.*]]) local_unnamed_addr #[[ATTR0]] {
-// OPT-NEXT:  [[ENTRY:.*:]]
-// OPT-NEXT:    [[TMP0:%.*]] = load float, ptr addrspace(1) [[A_COERCE]], align 4
-// OPT-NEXT:    [[ADD:%.*]] = fadd contract float [[TMP0]], 3.000000e+00
-// OPT-NEXT:    store float [[ADD]], ptr addrspace(1) [[A_COERCE]], align 4
-// OPT-NEXT:    ret void
-//
-// OPT-SPIRV-LABEL: define spir_kernel void @_Z7kernel82SS(
-// OPT-SPIRV-SAME: [[STRUCT_SS:%.*]] [[A_COERCE:%.*]]) local_unnamed_addr addrspace(4) #[[ATTR0]] {
-// OPT-SPIRV-NEXT:  [[ENTRY:.*:]]
-// OPT-SPIRV-NEXT:    [[TMP0:%.*]] = extractvalue [[STRUCT_SS]] [[A_COERCE]], 0
-// OPT-SPIRV-NEXT:    [[TMP1:%.*]] = load float, ptr addrspace(4) [[TMP0]], align 4
-// OPT-SPIRV-NEXT:    [[ADD:%.*]] = fadd contract float [[TMP1]], 3.000000e+00
-// OPT-SPIRV-NEXT:    store float [[ADD]], ptr addrspace(4) [[TMP0]], align 4
-// OPT-SPIRV-NEXT:    ret void
-//
-// HOST-LABEL: define dso_local void @_Z22__device_stub__kernel82SS(
-// HOST-SAME: ptr [[A_COERCE:%.*]]) #[[ATTR0]] {
-// HOST-NEXT:  [[ENTRY:.*:]]
-// HOST-NEXT:    [[A:%.*]] = alloca [[STRUCT_SS:%.*]], align 8
-// HOST-NEXT:    [[COERCE_DIVE:%.*]] = getelementptr inbounds nuw [[STRUCT_SS]], ptr [[A]], i32 0, i32 0
-// HOST-NEXT:    store ptr [[A_COERCE]], ptr [[COERCE_DIVE]], align 8
-// HOST-NEXT:    [[TMP0:%.*]] = call i32 @hipSetupArgument(ptr [[A]], i64 8, i64 0)
-// HOST-NEXT:    [[TMP1:%.*]] = icmp eq i32 [[TMP0]], 0
-// HOST-NEXT:    br i1 [[TMP1]], label %[[SETUP_NEXT:.*]], label %[[SETUP_END:.*]]
-// HOST:       [[SETUP_NEXT]]:
-// HOST-NEXT:    [[TMP2:%.*]] = call i32 @hipLaunchByPtr(ptr @_Z7kernel82SS)
-// HOST-NEXT:    br label %[[SETUP_END]]
-// HOST:       [[SETUP_END]]:
-// HOST-NEXT:    ret void
-//
+// HOST: define{{.*}} void @_Z22__device_stub__kernel82SS(ptr %a.coerce)
+// COMMON-LABEL: define{{.*}} amdgpu_kernel void @_Z7kernel82SS(ptr addrspace(1){{.*}} %a.coerce)
+// CHECK-NOT: ={{.*}} addrspacecast ptr addrspace(1) %{{.*}} to ptr
+// OPT: [[VAL:%.*]] = load float, ptr addrspace(1) %a.coerce, align 4{{$}}
+// OPT: [[INC:%.*]] = fadd contract float [[VAL]], 3.000000e+00
+// OPT: store float [[INC]], ptr addrspace(1) %a.coerce, align 4
+// OPT: ret void
 __global__ void kernel8(struct SS a) {
   *a.x += 3.f;
 }

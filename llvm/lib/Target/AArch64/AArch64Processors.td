@@ -876,7 +876,7 @@ def ProcessorFeatures {
                                      FeatureNEON, FeaturePerfMon, FeatureSHA3,
                                      FeatureFullFP16, FeatureFP16FML,
                                      FeatureComplxNum, FeatureCRC, FeatureJS,
-                                     FeatureLSE, FeaturePAuth, FeatureFPAC,
+                                     FeatureLSE, FeaturePAuth,
                                      FeatureRAS, FeatureRCPC, FeatureRDM,
                                      FeatureBF16, FeatureDotProd, FeatureMatMulInt8, FeatureSSBS];
   list<SubtargetFeature> AppleA16 = [HasV8_6aOps, FeatureSHA2, FeatureAES, FeatureFPARMv8,
@@ -884,7 +884,7 @@ def ProcessorFeatures {
                                      FeatureFullFP16, FeatureFP16FML,
                                      FeatureHCX,
                                      FeatureComplxNum, FeatureCRC, FeatureJS,
-                                     FeatureLSE, FeaturePAuth, FeatureFPAC,
+                                     FeatureLSE, FeaturePAuth,
                                      FeatureRAS, FeatureRCPC, FeatureRDM,
                                      FeatureBF16, FeatureDotProd, FeatureMatMulInt8, FeatureSSBS];
   list<SubtargetFeature> AppleA17 = [HasV8_6aOps, FeatureSHA2, FeatureAES, FeatureFPARMv8,
@@ -892,10 +892,15 @@ def ProcessorFeatures {
                                      FeatureFullFP16, FeatureFP16FML,
                                      FeatureHCX,
                                      FeatureComplxNum, FeatureCRC, FeatureJS,
-                                     FeatureLSE, FeaturePAuth, FeatureFPAC,
+                                     FeatureLSE, FeaturePAuth,
                                      FeatureRAS, FeatureRCPC, FeatureRDM,
                                      FeatureBF16, FeatureDotProd, FeatureMatMulInt8, FeatureSSBS];
-  list<SubtargetFeature> AppleM4 = [HasV9_2aOps, FeatureSHA2, FeatureFPARMv8,
+  // Technically apple-m4 is v9.2a, but we can't use that here.
+  // Historically, llvm defined v9.0a as requiring SVE, but it's optional
+  // according to the Arm ARM, and not supported by the core.  We decoupled the
+  // two in the clang driver and in the backend subtarget features, but it's
+  // still an issue in the clang frontend.  v8.7a is the next closest choice.
+  list<SubtargetFeature> AppleM4 = [HasV8_7aOps, FeatureSHA2, FeatureFPARMv8,
                                     FeatureNEON, FeaturePerfMon, FeatureSHA3,
                                     FeatureFullFP16, FeatureFP16FML,
                                     FeatureAES, FeatureBF16,

@@ -445,6 +445,8 @@ public:
 
     // Note no operator<=>, use three_way_contiguous_iterator for testing operator<=>
 
+    friend TEST_CONSTEXPR It base(const contiguous_iterator& i) { return i.it_; }
+
   friend constexpr It base(const contiguous_iterator& i) { return i.it_; }
 
   template <class T>

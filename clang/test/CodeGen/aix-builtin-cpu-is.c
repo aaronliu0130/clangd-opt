@@ -54,10 +54,6 @@
 // RUN: %clang_cc1 -triple powerpc-ibm-aix7.2.0.0 -emit-llvm -o - %t.c | FileCheck %s -DVALUE=262144 \
 // RUN:   --check-prefix=CHECKOP
 
-// RUN: echo "int main() { return __builtin_cpu_is(\"pwr10\");}" > %t.c
-// RUN: %clang_cc1 -triple powerpc-ibm-aix7.2.0.0 -emit-llvm -o - %t.c | FileCheck %s -DVALUE=262144 \
-// RUN:   --check-prefix=CHECKOP
-
 // RUN: echo "int main() { return __builtin_cpu_is(\"power11\");}" > %t.c
 // RUN: %clang_cc1 -triple powerpc-ibm-aix7.2.0.0 -emit-llvm -o - %t.c | FileCheck %s -DVALUE=524288 \
 // RUN:   --check-prefix=CHECKOP

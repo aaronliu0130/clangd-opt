@@ -21,6 +21,7 @@
 #include "AST.h"
 #include "CodeCompletionStrings.h"
 #include "Compiler.h"
+#include "Config.h"
 #include "ExpectedTypes.h"
 #include "Feature.h"
 #include "FileDistance.h"
@@ -358,7 +359,12 @@ struct CodeCompletionBuilder {
     if (C.SemaResult) {
       assert(ASTCtx);
       Completion.Origin |= SymbolOrigin::AST;
-      Completion.Name = std::string(llvm::StringRef(SemaCCS->getTypedText()));
+      if (C.SemaResult->Name) {
+        Completion.Name = C.SemaResult->Name;
+        Completion.AbstractName = true;
+      } else {
+        Completion.Name = std::string(llvm::StringRef(SemaCCS->getTypedText()));
+      }
       Completion.FilterText = SemaCCS->getAllTypedText();
       if (Completion.Scope.empty()) {
         if ((C.SemaResult->Kind == CodeCompletionResult::RK_Declaration) ||
@@ -473,6 +479,8 @@ struct CodeCompletionBuilder {
                    C.SemaResult->CursorKind,
                    /*IncludeFunctionArguments=*/C.SemaResult->FunctionCanBeCall,
                    /*RequiredQualifiers=*/&Completion.RequiredQualifier);
+      if (C.SemaResult->Name) // Description is self-contained.
+        S.Signature.clear();
       S.ReturnType = getReturnType(*SemaCCS);
       if (C.SemaResult->Kind == CodeCompletionResult::RK_Declaration)
         if (const auto *D = C.SemaResult->getDeclaration())
@@ -504,11 +512,11 @@ struct CodeCompletionBuilder {
         }
       };
       if (C.IndexResult) {
-        SetDoc(C.IndexResult->Documentation);
+        SetDoc(C.IndexResult->Documentation.CommentText);
       } else if (C.SemaResult) {
-        const auto DocComment = getDocComment(*ASTCtx, *C.SemaResult,
-                                              /*CommentsFromHeaders=*/false);
-        SetDoc(formatDocumentation(*SemaCCS, DocComment));
+        const auto DocComment = getDocumentation(*ASTCtx, *C.SemaResult,
+                                                 /*CommentsFromHeaders=*/false);
+        SetDoc(formatDocumentation(*SemaCCS, DocComment.CommentText));
       }
     }
     if (Completion.Deprecated) {
@@ -797,8 +805,8 @@ SpecifiedScope getQueryScopes(CodeCompletionContext &CCContext,
   llvm::StringRef SpelledSpecifier = Lexer::getSourceText(
       CharSourceRange::getCharRange(SemaSpecifier->getRange()),
       CCSema.SourceMgr, clang::LangOptions());
-  if (SpelledSpecifier.consume_front("::")) 
-      Scopes.QueryScopes = {""};
+  if (SpelledSpecifier.consume_front("::"))
+    Scopes.QueryScopes = {""};
   Scopes.UnresolvedQualifier = std::string(SpelledSpecifier);
   // Sema excludes the trailing "::".
   if (!Scopes.UnresolvedQualifier->empty())
@@ -970,6 +978,8 @@ struct CompletionRecorder : public CodeCompleteConsumer {
   // Returns the filtering/sorting name for Result, which must be from Results.
   // Returned string is owned by this recorder (or the AST).
   llvm::StringRef getName(const CodeCompletionResult &Result) {
+    if (Result.Name)
+      return Result.Name;
     switch (Result.Kind) {
     case CodeCompletionResult::RK_Declaration:
       if (auto *ID = Result.Declaration->getIdentifier())
@@ -1096,8 +1106,9 @@ public:
       ScoredSignatures.push_back(processOverloadCandidate(
           Candidate, *CCS,
           Candidate.getFunction()
-              ? getDeclComment(S.getASTContext(), *Candidate.getFunction())
-              : ""));
+              ? getDeclDocumentation(S.getASTContext(),
+                                     *Candidate.getFunction())
+              : SymbolDocumentationOwned{}));
     }
 
     // Sema does not load the docs from the preamble, so we need to fetch extra
@@ -1112,7 +1123,7 @@ public:
       }
       Index->lookup(IndexRequest, [&](const Symbol &S) {
         if (!S.Documentation.empty())
-          FetchedDocs[S.ID] = std::string(S.Documentation);
+          FetchedDocs[S.ID] = std::string(S.Documentation.CommentText);
       });
       vlog("SigHelp: requested docs for {0} symbols from the index, got {1} "
            "symbols with non-empty docs in the response",
@@ -1221,15 +1232,17 @@ private:
 
   // FIXME(ioeric): consider moving CodeCompletionString logic here to
   // CompletionString.h.
-  ScoredSignature processOverloadCandidate(const OverloadCandidate &Candidate,
-                                           const CodeCompletionString &CCS,
-                                           llvm::StringRef DocComment) const {
+  ScoredSignature
+  processOverloadCandidate(const OverloadCandidate &Candidate,
+                           const CodeCompletionString &CCS,
+                           const SymbolDocumentationOwned &DocComment) const {
     SignatureInformation Signature;
     SignatureQualitySignals Signal;
     const char *ReturnType = nullptr;
 
     markup::Document OverloadComment;
-    parseDocumentation(formatDocumentation(CCS, DocComment), OverloadComment);
+    parseDocumentation(formatDocumentation(CCS, DocComment.CommentText),
+                       OverloadComment);
     Signature.documentation = renderDoc(OverloadComment, DocumentationFormat);
     Signal.Kind = Candidate.getKind();
 
@@ -1591,7 +1604,7 @@ class CodeCompleteFlow {
   CompletionPrefix HeuristicPrefix;
   std::optional<FuzzyMatcher> Filter; // Initialized once Sema runs.
   Range ReplacedRange;
-  std::vector<std::string> QueryScopes; // Initialized once Sema runs.
+  std::vector<std::string> QueryScopes;      // Initialized once Sema runs.
   std::vector<std::string> AccessibleScopes; // Initialized once Sema runs.
   // Initialized once QueryScopes is initialized, if there are scopes.
   std::optional<ScopeDistance> ScopeProximity;
@@ -1650,7 +1663,9 @@ public:
       Inserter.emplace(
           SemaCCInput.FileName, SemaCCInput.ParseInput.Contents, Style,
           SemaCCInput.ParseInput.CompileCommand.Directory,
-          &Recorder->CCSema->getPreprocessor().getHeaderSearchInfo());
+          &Recorder->CCSema->getPreprocessor().getHeaderSearchInfo(),
+          Config::current().Style.QuotedHeaders,
+          Config::current().Style.AngledHeaders);
       for (const auto &Inc : Includes.MainFileIncludes)
         Inserter->addExisting(Inc);
 
@@ -1733,7 +1748,9 @@ public:
     auto Style = getFormatStyleForFile(FileName, Content, TFS, false);
     // This will only insert verbatim headers.
     Inserter.emplace(FileName, Content, Style,
-                     /*BuildDir=*/"", /*HeaderSearchInfo=*/nullptr);
+                     /*BuildDir=*/"", /*HeaderSearchInfo=*/nullptr,
+                     Config::current().Style.QuotedHeaders,
+                     Config::current().Style.AngledHeaders);
 
     auto Identifiers = collectIdentifiers(Content, Style);
     std::vector<RawIdentifier> IdentifierResults;
@@ -2320,9 +2337,16 @@ CompletionItem CodeCompletion::render(const CodeCompleteOptions &Opts) const {
   // In VSCode there are rendering issues that prevent these being aligned.
   LSP.label = ((InsertInclude && InsertInclude->Insertion)
                    ? Opts.IncludeIndicator.Insert
-                   : Opts.IncludeIndicator.NoInsert) +
-              (Opts.ShowOrigins ? "[" + llvm::to_string(Origin) + "]" : "") +
-              RequiredQualifier + Name;
+               : AbstractName ? Opts.IncludeIndicator.Rewrite
+                              : Opts.IncludeIndicator.NoInsert);
+  if (Opts.ShowOrigins)
+    LSP.label += "[" + llvm::to_string(Origin) + "]";
+  if (AbstractName) {
+    LSP.label += Name;
+  } else {
+    LSP.label += RequiredQualifier;
+    LSP.label += Name;
+  }
   LSP.labelDetails.emplace();
   LSP.labelDetails->detail = Signature;
 
@@ -2343,7 +2367,9 @@ CompletionItem CodeCompletion::render(const CodeCompleteOptions &Opts) const {
   }
   LSP.sortText = sortText(Score.Total, FilterText);
   LSP.filterText = FilterText;
-  LSP.textEdit = {CompletionTokenRange, RequiredQualifier + Name, ""};
+  LSP.textEdit = {CompletionTokenRange,
+                  AbstractName ? RequiredQualifier : RequiredQualifier + Name,
+                  ""};
   // Merge continuous additionalTextEdits into main edit. The main motivation
   // behind this is to help LSP clients, it seems most of them are confused when
   // they are provided with additionalTextEdits that are consecutive to main
@@ -2352,7 +2378,7 @@ CompletionItem CodeCompletion::render(const CodeCompleteOptions &Opts) const {
   // is mainly to help LSP clients again, so that changes do not effect each
   // other.
   for (const auto &FixIt : FixIts) {
-    if (FixIt.range.end == LSP.textEdit->range.start) {
+    if (0 && FixIt.range.end == LSP.textEdit->range.start) {
       LSP.textEdit->newText = FixIt.newText + LSP.textEdit->newText;
       LSP.textEdit->range.start = FixIt.range.start;
     } else {

@@ -24,6 +24,7 @@
 #include "Compiler.h"
 #include "Diagnostics.h"
 #include "Headers.h"
+#include "HeuristicResolver.h"
 #include "Preamble.h"
 #include "clang-include-cleaner/Record.h"
 #include "support/Path.h"
@@ -116,8 +117,9 @@ public:
   /// AST. Might be std::nullopt if no Preamble is used.
   std::optional<llvm::StringRef> preambleVersion() const;
 
-  const HeuristicResolver *getHeuristicResolver() const {
-    return Resolver.get();
+  HeuristicResolver
+  getHeuristicResolver(const DeclContext *EnclosingDecl = nullptr) const {
+    return HeuristicResolver(getASTContext(), EnclosingDecl);
   }
 
 private:
@@ -158,7 +160,6 @@ private:
   std::vector<Decl *> LocalTopLevelDecls;
   IncludeStructure Includes;
   include_cleaner::PragmaIncludes PI;
-  std::unique_ptr<HeuristicResolver> Resolver;
 };
 
 } // namespace clangd

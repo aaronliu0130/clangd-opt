@@ -181,7 +181,7 @@ deleteTokensWithKind(const syntax::TokenBuffer &TokBuf, tok::TokenKind Kind,
 llvm::Expected<std::string>
 getFunctionSourceCode(const FunctionDecl *FD, const DeclContext *TargetContext,
                       const syntax::TokenBuffer &TokBuf,
-                      const HeuristicResolver *Resolver) {
+                      const HeuristicResolver &Resolver) {
   auto &AST = FD->getASTContext();
   auto &SM = AST.getSourceManager();
 

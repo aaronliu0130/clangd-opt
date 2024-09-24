@@ -637,7 +637,8 @@ ParsedAST::build(llvm::StringRef Filename, const ParseInputs &Inputs,
           getFormatStyleForFile(Filename, Inputs.Contents, *Inputs.TFS, false);
       auto Inserter = std::make_shared<IncludeInserter>(
           Filename, Inputs.Contents, Style, BuildDir.get(),
-          &Clang->getPreprocessor().getHeaderSearchInfo());
+          &Clang->getPreprocessor().getHeaderSearchInfo(),
+          Cfg.Style.QuotedHeaders, Cfg.Style.AngledHeaders);
       ArrayRef<Inclusion> MainFileIncludes;
       if (Preamble) {
         MainFileIncludes = Preamble->Includes.MainFileIncludes;
@@ -849,8 +850,7 @@ ParsedAST::ParsedAST(PathRef TUPath, llvm::StringRef Version,
       Tokens(std::move(Tokens)), Macros(std::move(Macros)),
       Marks(std::move(Marks)), Diags(std::move(Diags)),
       LocalTopLevelDecls(std::move(LocalTopLevelDecls)),
-      Includes(std::move(Includes)), PI(std::move(PI)),
-      Resolver(std::make_unique<HeuristicResolver>(getASTContext())) {
+      Includes(std::move(Includes)), PI(std::move(PI)) {
   assert(this->Clang);
   assert(this->Action);
 }

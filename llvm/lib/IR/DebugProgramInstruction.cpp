@@ -477,8 +477,13 @@ Value *DbgVariableRecord::getAddress() const {
     return V->getValue();
 
   // When the value goes to null, it gets replaced by an empty MDNode.
+<<<<<<< HEAD
   assert((!MD || !cast<MDNode>(MD)->getNumOperands()) &&
          "Expected an empty MDNode");
+=======
+  assert(!MD ||
+         !cast<MDNode>(MD)->getNumOperands() && "Expected an empty MDNode");
+>>>>>>> opt
   return nullptr;
 }
 

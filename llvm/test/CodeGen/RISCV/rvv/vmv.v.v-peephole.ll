@@ -194,6 +194,7 @@ define <vscale x 2 x i32> @unfoldable_mismatched_sew(<vscale x 2 x i32> %passthr
   %b = call <vscale x 2 x i32> @llvm.riscv.vmv.v.v.nxv2i32(<vscale x 2 x i32> %passthru, <vscale x 2 x i32> %a.bitcast, iXLen %avl)
   ret <vscale x 2 x i32> %b
 }
+<<<<<<< HEAD:llvm/test/CodeGen/RISCV/rvv/vmv.v.v-peephole.ll
 
 
 define <vscale x 1 x i64> @undef_passthru(<vscale x 1 x i64> %passthru, <vscale x 1 x i64> %x, <vscale x 1 x i64> %y, iXLen %avl) {
@@ -206,3 +207,5 @@ define <vscale x 1 x i64> @undef_passthru(<vscale x 1 x i64> %passthru, <vscale 
   %b = call <vscale x 1 x i64> @llvm.riscv.vmv.v.v.nxv1i64(<vscale x 1 x i64> undef, <vscale x 1 x i64> %a, iXLen %avl)
   ret <vscale x 1 x i64> %b
 }
+=======
+>>>>>>> opt:llvm/test/CodeGen/RISCV/rvv/combine-vmv.ll

@@ -60,10 +60,17 @@ Value *VectorBuilder::createVectorInstruction(unsigned Opcode, Type *ReturnTy,
   return createVectorInstructionImpl(VPID, ReturnTy, InstOpArray, Name);
 }
 
+<<<<<<< HEAD
 Value *VectorBuilder::createSimpleReduction(Intrinsic::ID RdxID,
                                             Type *ValTy,
                                             ArrayRef<Value *> InstOpArray,
                                             const Twine &Name) {
+=======
+Value *VectorBuilder::createSimpleTargetReduction(Intrinsic::ID RdxID,
+                                                  Type *ValTy,
+                                                  ArrayRef<Value *> InstOpArray,
+                                                  const Twine &Name) {
+>>>>>>> opt
   auto VPID = VPIntrinsic::getForIntrinsic(RdxID);
   assert(VPReductionIntrinsic::isVPReduction(VPID) &&
          "No VPIntrinsic for this reduction");

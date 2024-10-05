@@ -122,7 +122,11 @@ define <4 x float> @ldexp_v4f32(<4 x float> %val, <4 x i32> %exp) {
 ; CHECK-NEXT:    extsw r4, r3
 ; CHECK-NEXT:    bl ldexpf
 ; CHECK-NEXT:    nop
+<<<<<<< HEAD
 ; CHECK-NEXT:    xxmrghd vs0, vs1, v29
+=======
+; CHECK-NEXT:    xxmrghd vs0, v29, vs1
+>>>>>>> opt
 ; CHECK-NEXT:    li r3, 0
 ; CHECK-NEXT:    vextuwrx r3, r3, v31
 ; CHECK-NEXT:    xvcvdpsp v28, vs0

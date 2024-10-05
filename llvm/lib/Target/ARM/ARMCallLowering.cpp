@@ -547,4 +547,8 @@ bool ARMCallLowering::lowerCall(MachineIRBuilder &MIRBuilder, CallLoweringInfo &
   return true;
 }
 
+<<<<<<< HEAD
 bool ARMCallLowering::enableBigEndian() const { return EnableGISelBigEndian; }
+=======
+bool ARMCallLowering::enableBigEndian() const { return EnableGISelBigEndian; }
+>>>>>>> opt

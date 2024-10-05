@@ -876,7 +876,11 @@ def ProcessorFeatures {
                                      FeatureNEON, FeaturePerfMon, FeatureSHA3,
                                      FeatureFullFP16, FeatureFP16FML,
                                      FeatureComplxNum, FeatureCRC, FeatureJS,
+<<<<<<< HEAD
                                      FeatureLSE, FeaturePAuth, FeatureFPAC,
+=======
+                                     FeatureLSE, FeaturePAuth,
+>>>>>>> opt
                                      FeatureRAS, FeatureRCPC, FeatureRDM,
                                      FeatureBF16, FeatureDotProd, FeatureMatMulInt8, FeatureSSBS];
   list<SubtargetFeature> AppleA16 = [HasV8_6aOps, FeatureSHA2, FeatureAES, FeatureFPARMv8,
@@ -884,7 +888,11 @@ def ProcessorFeatures {
                                      FeatureFullFP16, FeatureFP16FML,
                                      FeatureHCX,
                                      FeatureComplxNum, FeatureCRC, FeatureJS,
+<<<<<<< HEAD
                                      FeatureLSE, FeaturePAuth, FeatureFPAC,
+=======
+                                     FeatureLSE, FeaturePAuth,
+>>>>>>> opt
                                      FeatureRAS, FeatureRCPC, FeatureRDM,
                                      FeatureBF16, FeatureDotProd, FeatureMatMulInt8, FeatureSSBS];
   list<SubtargetFeature> AppleA17 = [HasV8_6aOps, FeatureSHA2, FeatureAES, FeatureFPARMv8,
@@ -892,7 +900,11 @@ def ProcessorFeatures {
                                      FeatureFullFP16, FeatureFP16FML,
                                      FeatureHCX,
                                      FeatureComplxNum, FeatureCRC, FeatureJS,
+<<<<<<< HEAD
                                      FeatureLSE, FeaturePAuth, FeatureFPAC,
+=======
+                                     FeatureLSE, FeaturePAuth,
+>>>>>>> opt
                                      FeatureRAS, FeatureRCPC, FeatureRDM,
                                      FeatureBF16, FeatureDotProd, FeatureMatMulInt8, FeatureSSBS];
   // Technically apple-m4 is v9.2a, but we can't use that here.

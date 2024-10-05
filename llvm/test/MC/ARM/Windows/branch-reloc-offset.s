@@ -1,5 +1,8 @@
 // RUN: llvm-mc -triple thumbv7-windows-gnu -filetype obj %s -o - | llvm-objdump -D -r - | FileCheck %s
+<<<<<<< HEAD
 // RUN: not llvm-mc -triple thumbv7-windows-gnu -filetype obj --defsym ERR=1 %s -o /dev/null 2>&1 | FileCheck %s --check-prefix=ERR
+=======
+>>>>>>> opt
 
     .text
 main:
@@ -56,6 +59,7 @@ main:
 // CHECK:        e: bf00          nop
 // CHECK: 00000010 <.Lother_target>:
 // CHECK:       10: 4770          bx      lr
+<<<<<<< HEAD
 
 .ifdef ERR
     .section "other2", "xr"
@@ -93,3 +97,5 @@ err:
 .Lerr_target2:
     bx lr
 .endif
+=======
+>>>>>>> opt

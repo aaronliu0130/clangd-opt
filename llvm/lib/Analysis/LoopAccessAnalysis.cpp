@@ -721,7 +721,11 @@ public:
     DepChecker.clearDependences();
   }
 
+<<<<<<< HEAD
   const MemAccessInfoList &getDependenciesToCheck() const { return CheckDeps; }
+=======
+  MemAccessInfoList &getDependenciesToCheck() { return CheckDeps; }
+>>>>>>> opt
 
 private:
   typedef MapVector<MemAccessInfo, SmallSetVector<Type *, 1>> PtrAccessMap;

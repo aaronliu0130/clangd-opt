@@ -97,6 +97,9 @@ static void adjustRelativeBranch(unsigned Size, const MCFixup &Fixup,
 
   // Rightshifts the value by one.
   AVR::fixups::adjustBranchTarget(Value);
+
+  // Jumps are relative to the current instruction.
+  Value -= 1;
 }
 
 /// 22-bit absolute fixup.

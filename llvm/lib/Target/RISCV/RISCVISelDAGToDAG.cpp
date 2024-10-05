@@ -3791,7 +3791,11 @@ bool RISCVDAGToDAGISel::performCombineVMergeAndVOps(SDNode *N) {
   if (True.getSimpleValueType() != N->getSimpleValueType(0))
     return false;
 
+<<<<<<< HEAD
   // We require that either passthru and false are the same, or that passthru
+=======
+  // We require that either merge and false are the same, or that merge
+>>>>>>> opt
   // is undefined.
   if (Passthru != False && !isImplicitDef(Passthru))
     return false;

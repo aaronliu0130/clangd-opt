@@ -11,6 +11,7 @@
 
 #include "ParsedAST.h"
 #include "Protocol.h"
+#include "SymbolDocumentation.h"
 #include "support/Markup.h"
 #include "clang/Index/IndexSymbol.h"
 #include <optional>
@@ -73,7 +74,7 @@ struct HoverInfo {
   std::string Provider;
   std::optional<Range> SymRange;
   index::SymbolKind Kind = index::SymbolKind::Unknown;
-  std::string Documentation;
+  SymbolDocumentationOwned Documentation;
   /// Source code containing the definition of the symbol.
   std::string Definition;
   const char *DefinitionLanguage = "cpp";
@@ -95,6 +96,8 @@ struct HoverInfo {
   std::optional<uint64_t> Size;
   /// Contains the offset of fields within the enclosing class.
   std::optional<uint64_t> Offset;
+  /// Contains the index of fields within the enclosing class.
+  std::optional<uint64_t> Index;
   /// Contains the padding following a field within the enclosing class.
   std::optional<uint64_t> Padding;
   /// Contains the alignment of fields and types where it's interesting.

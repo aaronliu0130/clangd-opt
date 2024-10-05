@@ -523,10 +523,16 @@ private:
     if (__rseq_size < 32)
       RseqStructSize = 32;
 
+<<<<<<< HEAD
     long RseqDisableOutput = syscall(
         SYS_rseq,
         reinterpret_cast<uintptr_t>(__builtin_thread_pointer()) + __rseq_offset,
         RseqStructSize, RSEQ_FLAG_UNREGISTER, RSEQ_SIG);
+=======
+    long RseqDisableOutput =
+        syscall(SYS_rseq, (intptr_t)__builtin_thread_pointer() + __rseq_offset,
+                RseqStructSize, RSEQ_FLAG_UNREGISTER, RSEQ_SIG);
+>>>>>>> opt
     if (RseqDisableOutput != 0)
       exit(ChildProcessExitCodeE::RSeqDisableFailed);
 #endif // GLIBC_INITS_RSEQ

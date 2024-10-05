@@ -17,7 +17,6 @@
 
 #include <atomic>
 #include <cassert>
-#include <concepts>
 #include <cstddef>
 
 #include "test_macros.h"

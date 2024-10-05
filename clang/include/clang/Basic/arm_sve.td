@@ -1940,24 +1940,6 @@ def SVTBX_BF16  : SInst<"svtbx[_{d}]",  "dddu", "b", MergeNone, "aarch64_sve_tbx
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// SVE2 - Lookup table
-let SVETargetGuard = "sve2,lut", SMETargetGuard = "sme2,lut" in {
-  def SVLUTI2_B : SInst<"svluti2_lane[_{d}]", "dd[i", "cUc", MergeNone, "aarch64_sve_luti2_lane", [VerifyRuntimeMode], [ImmCheck<2, ImmCheck0_3>]>;
-  def SVLUTI2_H : SInst<"svluti2_lane[_{d}]", "dd[i", "sUsh", MergeNone, "aarch64_sve_luti2_lane", [VerifyRuntimeMode], [ImmCheck<2, ImmCheck0_7>]>;
-
-  def SVLUTI4_B : SInst<"svluti4_lane[_{d}]", "dd[i", "cUc", MergeNone, "aarch64_sve_luti4_lane", [VerifyRuntimeMode], [ImmCheck<2, ImmCheck0_1>]>;
-  def SVLUTI4_H : SInst<"svluti4_lane[_{d}]", "dd[i", "sUsh", MergeNone, "aarch64_sve_luti4_lane", [VerifyRuntimeMode], [ImmCheck<2, ImmCheck0_3>]>;
-
-  def SVLUTI4_x2 : SInst<"svluti4_lane[_{d}]_x2", "d2.d[i", "sUsh", MergeNone, "aarch64_sve_luti4_lane_x2", [VerifyRuntimeMode], [ImmCheck<2, ImmCheck0_3>]>;
-}
-
-let SVETargetGuard = "sve2,lut,bf16", SMETargetGuard = "sme2,lut,bf16" in {
-  def SVLUTI2_BF16 : SInst<"svluti2_lane[_{d}]", "dd[i", "b", MergeNone, "aarch64_sve_luti2_lane", [ VerifyRuntimeMode], [ImmCheck<2, ImmCheck0_7>]>;
-  def SVLUTI4_BF16 : SInst<"svluti4_lane[_{d}]", "dd[i", "b", MergeNone, "aarch64_sve_luti4_lane", [ VerifyRuntimeMode], [ImmCheck<2, ImmCheck0_3>]>;
-  def SVLUTI4_BF16_x2 : SInst<"svluti4_lane[_{d}]_x2", "d2.d[i", "b", MergeNone, "aarch64_sve_luti4_lane_x2", [ VerifyRuntimeMode], [ImmCheck<2, ImmCheck0_3>]>;
-}
-
-////////////////////////////////////////////////////////////////////////////////
 // SVE2 - Optional
 
 let SVETargetGuard = "sve2-aes", SMETargetGuard = InvalidMode in {
@@ -2110,7 +2092,7 @@ let SVETargetGuard = "sve2p1", SMETargetGuard = "sme2" in {
   def SVCNTP_COUNT : SInst<"svcntp_{d}", "n}i", "QcQsQiQl", MergeNone, "aarch64_sve_cntp_{d}", [IsOverloadNone, VerifyRuntimeMode], [ImmCheck<1, ImmCheck2_4_Mul2>]>;
 }
 
-let SVETargetGuard = "sve2,sve-b16b16", SMETargetGuard = "sme2,sve-b16b16" in {
+let SVETargetGuard = "sve2,b16b16", SMETargetGuard = "sme2,b16b16" in {
 defm SVMUL_BF  : SInstZPZZ<"svmul",  "b", "aarch64_sve_fmul",   "aarch64_sve_fmul_u", [VerifyRuntimeMode]>;
 defm SVADD_BF  : SInstZPZZ<"svadd",  "b", "aarch64_sve_fadd",   "aarch64_sve_fadd_u", [VerifyRuntimeMode]>;
 defm SVSUB_BF  : SInstZPZZ<"svsub",  "b", "aarch64_sve_fsub",   "aarch64_sve_fsub_u", [VerifyRuntimeMode]>;
@@ -2198,9 +2180,9 @@ multiclass BfSingleMultiVector<string name> {
   def NAME # _X4 : SInst<"sv" # name # "[_{d}_x4]", "444", "b", MergeNone, "aarch64_sve_f" # name # "_x4", [IsStreaming], []>;
 }
 
-let SVETargetGuard = InvalidMode, SMETargetGuard = "sme2,sve-b16b16"in {
-  def SVBFCLAMP_X2 : SInst<"svclamp[_single_{d}_x2]",  "22dd",   "b", MergeNone, "aarch64_sve_bfclamp_single_x2",  [IsStreaming], []>;
-  def SVBFCLAMP_X4 : SInst<"svclamp[_single_{d}_x4]",  "44dd",   "b", MergeNone, "aarch64_sve_bfclamp_single_x4",  [IsStreaming], []>;
+let SVETargetGuard = InvalidMode, SMETargetGuard = "sme2,b16b16"in {
+  def SVBFCLAMP_X2 : SInst<"svclamp[_single_{d}_x2]",  "22dd",   "b",      MergeNone, "aarch64_sve_bfclamp_single_x2",  [IsStreaming], []>;
+  def SVBFCLAMP_X4 : SInst<"svclamp[_single_{d}_x4]",  "44dd",   "b",      MergeNone, "aarch64_sve_bfclamp_single_x4",  [IsStreaming], []>;
 
   // bfmin, bfmax (single, multi)
   defm SVBFMIN : BfSingleMultiVector<"min">;
@@ -2251,13 +2233,6 @@ let SVETargetGuard = InvalidMode, SMETargetGuard = "sme2" in {
   def SVSQDMULH_SINGLE_X4 : SInst<"svqdmulh[_single_{d}_x4]", "44d", "csil", MergeNone, "aarch64_sve_sqdmulh_single_vgx4", [IsStreaming], []>;
   def SVSQDMULH_X2        : SInst<"svqdmulh[_{d}_x2]",        "222", "csil", MergeNone, "aarch64_sve_sqdmulh_vgx2",        [IsStreaming], []>;
   def SVSQDMULH_X4        : SInst<"svqdmulh[_{d}_x4]",        "444", "csil", MergeNone, "aarch64_sve_sqdmulh_vgx4",        [IsStreaming], []>;
-}
-
-let SVETargetGuard = InvalidMode, SMETargetGuard = "sme2,faminmax" in {
-  def FAMIN_X2 : Inst<"svamin[_{d}_x2]", "222", "hfd", MergeNone, "aarch64_sme_famin_x2",  [IsStreaming], []>;
-  def FAMAX_X2 : Inst<"svamax[_{d}_x2]", "222", "hfd", MergeNone, "aarch64_sme_famax_x2",  [IsStreaming], []>;
-  def FAMIN_X4 : Inst<"svamin[_{d}_x4]", "444", "hfd", MergeNone, "aarch64_sme_famin_x4",  [IsStreaming], []>;
-  def FAMAX_X4 : Inst<"svamax[_{d}_x4]", "444", "hfd", MergeNone, "aarch64_sme_famax_x4",  [IsStreaming], []>;
 }
 
 let SVETargetGuard = "sve2p1", SMETargetGuard = "sme2" in {
@@ -2418,16 +2393,6 @@ let SVETargetGuard = InvalidMode, SMETargetGuard = "sme2" in {
   def SVUUNPK_X4 : SInst<"svunpk_{d}[_{3}_x4]", "42.h", "UsUiUl", MergeNone, "aarch64_sve_uunpk_x4", [IsStreaming], []>;
 }
 
-//
-// Multi-vector scaling
-//
-let  SVETargetGuard = InvalidMode, SMETargetGuard = "sme2,fp8" in {
-  def FSCALE_SINGLE_X2 : Inst<"svscale[_single_{d}_x2]", "22x", "fhd", MergeNone, "aarch64_sme_fp8_scale_single_x2", [IsStreaming],[]>;
-  def FSCALE_SINGLE_X4 : Inst<"svscale[_single_{d}_x4]", "44x", "fhd", MergeNone, "aarch64_sme_fp8_scale_single_x4", [IsStreaming],[]>;
-  def FSCALE_X2 : Inst<"svscale[_{d}_x2]", "222.x", "fhd", MergeNone, "aarch64_sme_fp8_scale_x2", [IsStreaming],[]>;
-  def FSCALE_X4 : Inst<"svscale[_{d}_x4]", "444.x", "fhd", MergeNone, "aarch64_sme_fp8_scale_x4", [IsStreaming],[]>;
-}
-
 let SVETargetGuard = "sve2p1", SMETargetGuard = "sme2" in {
 // == BFloat16 multiply-subtract ==
   def SVBFMLSLB : SInst<"svbfmlslb[_{d}]", "dd$$", "f", MergeNone, "aarch64_sve_bfmlslb", [IsOverloadNone, VerifyRuntimeMode], []>;
@@ -2435,9 +2400,4 @@ let SVETargetGuard = "sve2p1", SMETargetGuard = "sme2" in {
 
   def SVBFMLSLB_LANE : SInst<"svbfmlslb_lane[_{d}]", "dd$$i", "f", MergeNone, "aarch64_sve_bfmlslb_lane", [IsOverloadNone, VerifyRuntimeMode], [ImmCheck<3, ImmCheck0_7>]>;
   def SVBFMLSLT_LANE : SInst<"svbfmlslt_lane[_{d}]", "dd$$i", "f", MergeNone, "aarch64_sve_bfmlslt_lane", [IsOverloadNone, VerifyRuntimeMode], [ImmCheck<3, ImmCheck0_7>]>;
-}
-
-let SVETargetGuard = "sve2,faminmax", SMETargetGuard = "sme2,faminmax" in {
-  defm SVAMIN : SInstZPZZ<"svamin", "hfd", "aarch64_sve_famin", "aarch64_sve_famin_u">;
-  defm SVAMAX : SInstZPZZ<"svamax", "hfd", "aarch64_sve_famax", "aarch64_sve_famax_u">;
 }

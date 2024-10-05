@@ -1,7 +1,11 @@
+<<<<<<< HEAD:llvm/lib/CGData/CMakeLists.txt
 add_llvm_component_library(LLVMCGData
   CodeGenData.cpp
   CodeGenDataReader.cpp
   CodeGenDataWriter.cpp
+=======
+add_llvm_component_library(LLVMCodeGenData
+>>>>>>> opt:llvm/lib/CodeGenData/CMakeLists.txt
   OutlinedHashTree.cpp
   OutlinedHashTreeRecord.cpp
 

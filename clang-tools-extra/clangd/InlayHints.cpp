@@ -17,6 +17,7 @@
 #include "clang/AST/DeclarationName.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
+#include "clang/AST/RecordLayout.h"
 #include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/AST/Stmt.h"
 #include "clang/AST/StmtVisitor.h"
@@ -464,7 +465,7 @@ public:
         isa<UserDefinedLiteral>(E))
       return true;
 
-    auto CalleeDecls = Resolver->resolveCalleeOfCallExpr(E);
+    auto CalleeDecls = Resolver.resolveCalleeOfCallExpr(E);
     if (CalleeDecls.size() != 1)
       return true;
 
@@ -611,6 +612,73 @@ public:
     if (!AT || AT->getDeducedType().isNull())
       return;
     addTypeHint(Range, D->getReturnType(), /*Prefix=*/"-> ");
+  }
+
+  bool VisitFieldDecl(FieldDecl *FD) {
+    const auto &Ctx = FD->getASTContext();
+    const auto *Record = FD->getParent();
+    if (Record)
+      Record = Record->getDefinition();
+    if (!Record || Record->isInvalidDecl() || Record->isDependentType())
+      return true;
+
+    const ASTRecordLayout &Layout = Ctx.getASTRecordLayout(Record);
+    unsigned EndOfField = Layout.getFieldOffset(FD->getFieldIndex());
+    if (FD->isBitField())
+      EndOfField += FD->isZeroSize(Ctx) ? 0 : FD->getBitWidthValue(Ctx);
+    else if (auto Size = Ctx.getTypeSizeInCharsIfKnown(FD->getType()))
+      EndOfField += FD->isZeroSize(Ctx) ? 0 : Size->getQuantity() * 8;
+    else
+      return true; // Can't get field size
+
+    // Calculate padding following the field.
+    uint64_t Padding = 0;
+    if (!Record->isUnion() &&
+        FD->getFieldIndex() + 1 < Layout.getFieldCount()) {
+      // Measure padding up to the next class field.
+      unsigned NextOffset = Layout.getFieldOffset(FD->getFieldIndex() + 1);
+      if (NextOffset >= EndOfField) // next field could be a bitfield!
+        Padding = NextOffset - EndOfField;
+    } else {
+      // Measure padding up to the end of the object.
+      Padding = (Layout.getSize().getQuantity() * 8) - EndOfField;
+    }
+
+    if (Padding) {
+      auto Bits = Padding % 8;
+      auto Bytes = Padding / 8;
+
+      std::string PadString = "+";
+      if (Bytes != 0)
+        PadString += std::to_string(Bytes) + (Bytes == 1 ? " byte" : " bytes");
+      if (Bits != 0)
+        PadString += (Bytes != 0 ? " and " : "") + std::to_string(Bits) +
+                     (Bits == 1 ? " bit" : " bits");
+      PadString += " padding";
+
+      if (Cfg.InlayHints.Enabled && Cfg.InlayHints.Designators) {
+        auto Loc = FD->getEndLoc().getLocWithOffset(1);
+        bool InvalidPos = false;
+        const char *Character =
+            Ctx.getSourceManager().getCharacterData(Loc, &InvalidPos);
+        while (!InvalidPos &&
+               (std::isblank(*Character) || std::isdigit(*Character) ||
+                std::isalpha(*Character) || *Character == '_')) {
+          Character++;
+          Loc = Loc.getLocWithOffset(1);
+        }
+        const char *Prefix = " (";
+        const char *Suffix = ")";
+        if (InvalidPos || *Character != ';') {
+          Loc = FD->getEndLoc();
+          Prefix = " /* ";
+          Suffix = " */";
+        }
+        addInlayHint(Loc, HintSide::Right, InlayHintKind::Designator, Prefix,
+                     PadString, Suffix);
+      }
+    }
+    return true;
   }
 
   bool VisitVarDecl(VarDecl *D) {
@@ -1053,7 +1121,7 @@ private:
   // Otherwise, the hint shouldn't be shown.
   std::optional<Range> computeBlockEndHintRange(SourceRange BraceRange,
                                                 StringRef OptionalPunctuation) {
-    constexpr unsigned HintMinLineLimit = 2;
+    constexpr unsigned HintMinLineLimit = 10;
 
     auto &SM = AST.getSourceManager();
     auto [BlockBeginFileId, BlockBeginOffset] =
@@ -1109,7 +1177,7 @@ private:
   std::optional<Range> RestrictRange;
   FileID MainFileID;
   StringRef MainFileBuf;
-  const HeuristicResolver *Resolver;
+  HeuristicResolver Resolver;
   PrintingPolicy TypeHintPolicy;
 };
 

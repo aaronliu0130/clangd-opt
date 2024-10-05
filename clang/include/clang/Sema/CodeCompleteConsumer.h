@@ -792,6 +792,13 @@ public:
     const IdentifierInfo *Macro;
   };
 
+  /// When Kind == RK_Pattern, an optional short name for the pattern.
+  /// Often he pattern combines with a fixit to rewrite surrounding code.
+  ///
+  /// For, example after "foo.", a completion that rewrites to "std::move(foo)"
+  /// could have Name = "move".
+  const char *Name = nullptr;
+
   /// The priority of this particular code-completion result.
   unsigned Priority;
 

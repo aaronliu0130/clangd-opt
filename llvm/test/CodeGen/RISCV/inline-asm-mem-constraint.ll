@@ -3386,9 +3386,15 @@ define void @should_not_fold() {
 ; RV32I-MEDIUM-LABEL: should_not_fold:
 ; RV32I-MEDIUM:       # %bb.0: # %start
 ; RV32I-MEDIUM-NEXT:    .cfi_def_cfa_offset 0
+<<<<<<< HEAD
 ; RV32I-MEDIUM-NEXT:  .Lpcrel_hi37:
 ; RV32I-MEDIUM-NEXT:    auipc a0, %pcrel_hi(_ZN5repro9MY_BUFFER17hb0f674501d5980a6E)
 ; RV32I-MEDIUM-NEXT:    addi a0, a0, %pcrel_lo(.Lpcrel_hi37)
+=======
+; RV32I-MEDIUM-NEXT:  .Lpcrel_hi39:
+; RV32I-MEDIUM-NEXT:    auipc a0, %pcrel_hi(_ZN5repro9MY_BUFFER17hb0f674501d5980a6E)
+; RV32I-MEDIUM-NEXT:    addi a0, a0, %pcrel_lo(.Lpcrel_hi39)
+>>>>>>> opt
 ; RV32I-MEDIUM-NEXT:    #APP
 ; RV32I-MEDIUM-NEXT:    ecall
 ; RV32I-MEDIUM-NEXT:    #NO_APP
@@ -3397,13 +3403,20 @@ define void @should_not_fold() {
 ; RV64I-MEDIUM-LABEL: should_not_fold:
 ; RV64I-MEDIUM:       # %bb.0: # %start
 ; RV64I-MEDIUM-NEXT:    .cfi_def_cfa_offset 0
+<<<<<<< HEAD
 ; RV64I-MEDIUM-NEXT:  .Lpcrel_hi37:
 ; RV64I-MEDIUM-NEXT:    auipc a0, %pcrel_hi(_ZN5repro9MY_BUFFER17hb0f674501d5980a6E)
 ; RV64I-MEDIUM-NEXT:    addi a0, a0, %pcrel_lo(.Lpcrel_hi37)
+=======
+; RV64I-MEDIUM-NEXT:  .Lpcrel_hi39:
+; RV64I-MEDIUM-NEXT:    auipc a0, %pcrel_hi(_ZN5repro9MY_BUFFER17hb0f674501d5980a6E)
+; RV64I-MEDIUM-NEXT:    addi a0, a0, %pcrel_lo(.Lpcrel_hi39)
+>>>>>>> opt
 ; RV64I-MEDIUM-NEXT:    #APP
 ; RV64I-MEDIUM-NEXT:    ecall
 ; RV64I-MEDIUM-NEXT:    #NO_APP
 ; RV64I-MEDIUM-NEXT:    ret
+<<<<<<< HEAD
 ;
 ; RV64I-LARGE-LABEL: should_not_fold:
 ; RV64I-LARGE:       # %bb.0: # %start
@@ -3415,6 +3428,8 @@ define void @should_not_fold() {
 ; RV64I-LARGE-NEXT:    ecall
 ; RV64I-LARGE-NEXT:    #NO_APP
 ; RV64I-LARGE-NEXT:    ret
+=======
+>>>>>>> opt
 start:
   %0 = tail call ptr asm sideeffect alignstack "ecall", "=&{x10},0,~{vtype},~{vl},~{vxsat},~{vxrm},~{memory}"(ptr @_ZN5repro9MY_BUFFER17hb0f674501d5980a6E)
   ret void

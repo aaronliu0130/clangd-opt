@@ -12,6 +12,7 @@
 
 // <cmath>
 
+#include <array>
 #include <cmath>
 #include <array>
 #include <cassert>

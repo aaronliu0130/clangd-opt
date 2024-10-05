@@ -23,6 +23,7 @@ endif()
 clang_target_link_libraries(clangdMain
   PRIVATE
   clangAST
+  clangASTMatchers
   clangBasic
   clangFormat
   clangFrontend

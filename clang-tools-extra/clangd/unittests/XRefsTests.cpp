@@ -1222,6 +1222,42 @@ TEST(LocateSymbol, TextualSmoke) {
                         hasID(getSymbolID(&findDecl(AST, "MyClass"))))));
 }
 
+TEST(LocateSymbol, DISABLED_DeduceDependentTypeFromSingleInstantiation) {
+  Annotations T(R"cpp(
+    struct Widget {
+      int $range_1[[method]](int);
+    };
+    template <class T> struct A {
+      template <class U> struct B {
+        template <class V> T foo(U, V arg) {
+          V copy;
+          int not_used = copy.$point_1^method(T{});
+          not_used = V().$point_2^method(T{});
+          auto lambda = [](auto w) {
+            return w.$point_3^method(T{});
+          };
+          lambda(copy);
+          arg.$point_4^method(T{});
+        }
+      };
+    };
+    int main() {
+      int X = A<int>::B<double>().foo(3.14, Widget{});
+    }
+  )cpp");
+
+  auto TU = TestTU::withCode(T.code());
+  auto AST = TU.build();
+  EXPECT_THAT(locateSymbolAt(AST, T.point("point_1")),
+              ElementsAre(sym("method", T.range("range_1"), std::nullopt)));
+  EXPECT_THAT(locateSymbolAt(AST, T.point("point_2")),
+              ElementsAre(sym("method", T.range("range_1"), std::nullopt)));
+  EXPECT_THAT(locateSymbolAt(AST, T.point("point_3")),
+              ElementsAre(sym("method", T.range("range_1"), std::nullopt)));
+  EXPECT_THAT(locateSymbolAt(AST, T.point("point_4")),
+              ElementsAre(sym("method", T.range("range_1"), std::nullopt)));
+}
+
 TEST(LocateSymbol, Textual) {
   const char *Tests[] = {
       R"cpp(// Comment

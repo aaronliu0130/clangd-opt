@@ -22,6 +22,7 @@ define void @store_flat_pointer_to_self() {
   ret void
 }
 
+<<<<<<< HEAD
 define void @store_volatile_flat_pointer_to_self() {
 ; CHECK-LABEL: define void @store_volatile_flat_pointer_to_self() {
 ; CHECK-NEXT:    [[ALLOCA:%.*]] = alloca ptr, align 8, addrspace(5)
@@ -43,6 +44,15 @@ define ptr @atomicrmw_xchg_flat_pointer_to_self() {
 ; CHECK-NEXT:    [[FLAT1:%.*]] = addrspacecast ptr addrspace(5) [[ALLOCA]] to ptr
 ; CHECK-NEXT:    [[XCHG:%.*]] = atomicrmw xchg ptr addrspace(5) [[ALLOCA]], ptr [[FLAT1]] seq_cst, align 8
 ; CHECK-NEXT:    call void @user(ptr [[FLAT1]])
+=======
+; FIXME: Should be able to optimize the pointer operand to flat.
+define ptr @atomicrmw_xchg_flat_pointer_to_self() {
+; CHECK-LABEL: define ptr @atomicrmw_xchg_flat_pointer_to_self() {
+; CHECK-NEXT:    [[ALLOCA:%.*]] = alloca ptr, align 8, addrspace(5)
+; CHECK-NEXT:    [[FLAT:%.*]] = addrspacecast ptr addrspace(5) [[ALLOCA]] to ptr
+; CHECK-NEXT:    [[XCHG:%.*]] = atomicrmw xchg ptr [[FLAT]], ptr [[FLAT]] seq_cst, align 8
+; CHECK-NEXT:    call void @user(ptr [[FLAT]])
+>>>>>>> opt
 ; CHECK-NEXT:    ret ptr [[XCHG]]
 ;
   %alloca = alloca ptr, align 8, addrspace(5)
@@ -52,6 +62,7 @@ define ptr @atomicrmw_xchg_flat_pointer_to_self() {
   ret ptr %xchg
 }
 
+<<<<<<< HEAD
 define ptr @atomicrmw_volatile_xchg_flat_pointer_to_self() {
 ; CHECK-LABEL: define ptr @atomicrmw_volatile_xchg_flat_pointer_to_self() {
 ; CHECK-NEXT:    [[ALLOCA:%.*]] = alloca ptr, align 8, addrspace(5)
@@ -67,13 +78,21 @@ define ptr @atomicrmw_volatile_xchg_flat_pointer_to_self() {
   ret ptr %xchg
 }
 
+=======
+>>>>>>> opt
 define { ptr, i1 } @cmpxchg_flat_pointer_new_to_self(ptr %cmp) {
 ; CHECK-LABEL: define { ptr, i1 } @cmpxchg_flat_pointer_new_to_self(
 ; CHECK-SAME: ptr [[CMP:%.*]]) {
 ; CHECK-NEXT:    [[ALLOCA:%.*]] = alloca ptr, align 8, addrspace(5)
+<<<<<<< HEAD
 ; CHECK-NEXT:    [[FLAT1:%.*]] = addrspacecast ptr addrspace(5) [[ALLOCA]] to ptr
 ; CHECK-NEXT:    [[CMPX:%.*]] = cmpxchg ptr addrspace(5) [[ALLOCA]], ptr [[CMP]], ptr [[FLAT1]] seq_cst seq_cst, align 8
 ; CHECK-NEXT:    call void @user(ptr [[FLAT1]])
+=======
+; CHECK-NEXT:    [[FLAT:%.*]] = addrspacecast ptr addrspace(5) [[ALLOCA]] to ptr
+; CHECK-NEXT:    [[CMPX:%.*]] = cmpxchg ptr [[FLAT]], ptr [[CMP]], ptr [[FLAT]] seq_cst seq_cst, align 8
+; CHECK-NEXT:    call void @user(ptr [[FLAT]])
+>>>>>>> opt
 ; CHECK-NEXT:    ret { ptr, i1 } [[CMPX]]
 ;
   %alloca = alloca ptr, align 8, addrspace(5)
@@ -83,6 +102,7 @@ define { ptr, i1 } @cmpxchg_flat_pointer_new_to_self(ptr %cmp) {
   ret { ptr, i1 } %cmpx
 }
 
+<<<<<<< HEAD
 define { ptr, i1 } @cmpxchg_volatile_flat_pointer_new_to_self(ptr %cmp) {
 ; CHECK-LABEL: define { ptr, i1 } @cmpxchg_volatile_flat_pointer_new_to_self(
 ; CHECK-SAME: ptr [[CMP:%.*]]) {
@@ -115,13 +135,21 @@ define { ptr, i1 } @volatile_cmpxchg_flat_pointer_new_to_self(ptr %cmp) {
   ret { ptr, i1 } %cmpx
 }
 
+=======
+>>>>>>> opt
 define { ptr, i1 } @cmpxchg_flat_pointer_cmp_to_self(ptr %new) {
 ; CHECK-LABEL: define { ptr, i1 } @cmpxchg_flat_pointer_cmp_to_self(
 ; CHECK-SAME: ptr [[NEW:%.*]]) {
 ; CHECK-NEXT:    [[ALLOCA:%.*]] = alloca ptr, align 8, addrspace(5)
+<<<<<<< HEAD
 ; CHECK-NEXT:    [[FLAT1:%.*]] = addrspacecast ptr addrspace(5) [[ALLOCA]] to ptr
 ; CHECK-NEXT:    [[CMPX:%.*]] = cmpxchg ptr addrspace(5) [[ALLOCA]], ptr [[FLAT1]], ptr [[NEW]] seq_cst seq_cst, align 8
 ; CHECK-NEXT:    call void @user(ptr [[FLAT1]])
+=======
+; CHECK-NEXT:    [[FLAT:%.*]] = addrspacecast ptr addrspace(5) [[ALLOCA]] to ptr
+; CHECK-NEXT:    [[CMPX:%.*]] = cmpxchg ptr [[FLAT]], ptr [[FLAT]], ptr [[NEW]] seq_cst seq_cst, align 8
+; CHECK-NEXT:    call void @user(ptr [[FLAT]])
+>>>>>>> opt
 ; CHECK-NEXT:    ret { ptr, i1 } [[CMPX]]
 ;
   %alloca = alloca ptr, align 8, addrspace(5)
@@ -130,6 +158,7 @@ define { ptr, i1 } @cmpxchg_flat_pointer_cmp_to_self(ptr %new) {
   call void @user(ptr %flat)
   ret { ptr, i1 } %cmpx
 }
+<<<<<<< HEAD
 
 define { ptr, i1 } @cmpxchg_flat_pointer_cmp_new_self() {
 ; CHECK-LABEL: define { ptr, i1 } @cmpxchg_flat_pointer_cmp_new_self() {
@@ -216,3 +245,5 @@ entry:
   store float 0.000000e+00, ptr %p2.flat, align 4
   ret void
 }
+=======
+>>>>>>> opt

@@ -1481,14 +1481,6 @@ static void handleOwnershipAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
     break;
   }
 
-  // Allow only pointers to be return type for functions with ownership_returns
-  // attribute. This matches with current OwnershipAttr::Takes semantics
-  if (K == OwnershipAttr::Returns &&
-      !getFunctionOrMethodResultType(D)->isPointerType()) {
-    S.Diag(AL.getLoc(), diag::err_ownership_takes_return_type) << AL;
-    return;
-  }
-
   IdentifierInfo *Module = AL.getArgAsIdent(0)->Ident;
 
   StringRef ModuleName = Module->getName();
@@ -1543,16 +1535,6 @@ static void handleOwnershipAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
           if (I->args_size())
             S.Diag(AL.getLoc(), diag::note_ownership_returns_index_mismatch)
                 << Idx.getSourceIndex() << Ex->getSourceRange();
-          return;
-        }
-      } else if (K == OwnershipAttr::Takes &&
-                 I->getOwnKind() == OwnershipAttr::Takes) {
-        if (I->getModule()->getName() != ModuleName) {
-          S.Diag(I->getLocation(), diag::err_ownership_takes_class_mismatch)
-              << I->getModule()->getName();
-          S.Diag(AL.getLoc(), diag::note_ownership_takes_class_mismatch)
-              << ModuleName << Ex->getSourceRange();
-
           return;
         }
       }
@@ -2993,17 +2975,10 @@ bool Sema::checkTargetAttr(SourceLocation LiteralLoc, StringRef AttrStr) {
     return Diag(LiteralLoc, diag::warn_unsupported_target_attribute)
            << Unknown << Tune << ParsedAttrs.Tune << Target;
 
-  if (Context.getTargetInfo().getTriple().isRISCV()) {
-    if (ParsedAttrs.Duplicate != "")
-      return Diag(LiteralLoc, diag::err_duplicate_target_attribute)
-             << Duplicate << None << ParsedAttrs.Duplicate << Target;
-    for (const auto &Feature : ParsedAttrs.Features) {
-      StringRef CurFeature = Feature;
-      if (!CurFeature.starts_with('+') && !CurFeature.starts_with('-'))
-        return Diag(LiteralLoc, diag::warn_unsupported_target_attribute)
-               << Unsupported << None << AttrStr << Target;
-    }
-  }
+  if (Context.getTargetInfo().getTriple().isRISCV() &&
+      ParsedAttrs.Duplicate != "")
+    return Diag(LiteralLoc, diag::err_duplicate_target_attribute)
+           << Duplicate << None << ParsedAttrs.Duplicate << Target;
 
   if (ParsedAttrs.Duplicate != "")
     return Diag(LiteralLoc, diag::warn_unsupported_target_attribute)
@@ -3145,55 +3120,6 @@ bool Sema::checkTargetClonesAttrString(
           HasNotDefault = true;
         }
       }
-    } else if (TInfo.getTriple().isRISCV()) {
-      // Suppress warn_target_clone_mixed_values
-      HasCommas = false;
-
-      // Cur is split's parts of Str. RISC-V uses Str directly,
-      // so skip when encountered more than once.
-      if (!Str.starts_with(Cur))
-        continue;
-
-      llvm::SmallVector<StringRef, 8> AttrStrs;
-      Str.split(AttrStrs, ";");
-
-      bool IsPriority = false;
-      bool IsDefault = false;
-      for (auto &AttrStr : AttrStrs) {
-        // Only support arch=+ext,... syntax.
-        if (AttrStr.starts_with("arch=+")) {
-          ParsedTargetAttr TargetAttr =
-              Context.getTargetInfo().parseTargetAttr(AttrStr);
-
-          if (TargetAttr.Features.empty() ||
-              llvm::any_of(TargetAttr.Features, [&](const StringRef Ext) {
-                return !RISCV().isValidFMVExtension(Ext);
-              }))
-            return Diag(CurLoc, diag::warn_unsupported_target_attribute)
-                   << Unsupported << None << Str << TargetClones;
-        } else if (AttrStr.starts_with("default")) {
-          IsDefault = true;
-          DefaultIsDupe = HasDefault;
-          HasDefault = true;
-        } else if (AttrStr.consume_front("priority=")) {
-          IsPriority = true;
-          int Digit;
-          if (AttrStr.getAsInteger(0, Digit))
-            return Diag(CurLoc, diag::warn_unsupported_target_attribute)
-                   << Unsupported << None << Str << TargetClones;
-        } else {
-          return Diag(CurLoc, diag::warn_unsupported_target_attribute)
-                 << Unsupported << None << Str << TargetClones;
-        }
-      }
-
-      if (IsPriority && IsDefault)
-        return Diag(CurLoc, diag::warn_unsupported_target_attribute)
-               << Unsupported << None << Str << TargetClones;
-
-      if (llvm::is_contained(StringsBuffer, Str) || DefaultIsDupe)
-        Diag(CurLoc, diag::warn_target_clone_duplicate_options);
-      StringsBuffer.push_back(Str);
     } else {
       // Other targets ( currently X86 )
       if (Cur.starts_with("arch=")) {
@@ -3464,8 +3390,8 @@ static FormatAttrKind getFormatAttrKind(StringRef Format) {
       // Otherwise, check for supported formats.
       .Cases("scanf", "printf", "printf0", "strfmon", SupportedFormat)
       .Cases("cmn_err", "vcmn_err", "zcmn_err", SupportedFormat)
-      .Cases("kprintf", "syslog", SupportedFormat) // OpenBSD.
-      .Case("freebsd_kprintf", SupportedFormat)    // FreeBSD.
+      .Case("kprintf", SupportedFormat)         // OpenBSD.
+      .Case("freebsd_kprintf", SupportedFormat) // FreeBSD.
       .Case("os_trace", SupportedFormat)
       .Case("os_log", SupportedFormat)
 
@@ -5954,7 +5880,8 @@ static void handleCountedByAttrField(Sema &S, Decl *D, const ParsedAttr &AL) {
     llvm_unreachable("unexpected counted_by family attribute");
   }
 
-  if (S.CheckCountedByAttrOnField(FD, CountExpr, CountInBytes, OrNull))
+  llvm::SmallVector<TypeCoupledDeclRefInfo, 1> Decls;
+  if (S.CheckCountedByAttrOnField(FD, CountExpr, Decls, CountInBytes, OrNull))
     return;
 
   QualType CAT = S.BuildCountAttributedArrayOrPointerType(
@@ -6047,7 +5974,7 @@ static void handleMSAllocatorAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
   // Warn if the return type is not a pointer or reference type.
   if (auto *FD = dyn_cast<FunctionDecl>(D)) {
     QualType RetTy = FD->getReturnType();
-    if (!RetTy->isPointerOrReferenceType()) {
+    if (!RetTy->isPointerType() && !RetTy->isReferenceType()) {
       S.Diag(AL.getLoc(), diag::warn_declspec_allocator_nonpointer)
           << AL.getRange() << RetTy;
       return;
@@ -6942,14 +6869,8 @@ ProcessDeclAttribute(Sema &S, Scope *scope, Decl *D, const ParsedAttr &AL,
   case ParsedAttr::AT_HLSLNumThreads:
     S.HLSL().handleNumThreadsAttr(D, AL);
     break;
-  case ParsedAttr::AT_HLSLWaveSize:
-    S.HLSL().handleWaveSizeAttr(D, AL);
-    break;
   case ParsedAttr::AT_HLSLSV_GroupIndex:
     handleSimpleAttribute<HLSLSV_GroupIndexAttr>(S, D, AL);
-    break;
-  case ParsedAttr::AT_HLSLGroupSharedAddressSpace:
-    handleSimpleAttribute<HLSLGroupSharedAddressSpaceAttr>(S, D, AL);
     break;
   case ParsedAttr::AT_HLSLSV_DispatchThreadID:
     S.HLSL().handleSV_DispatchThreadIDAttr(D, AL);
@@ -6962,6 +6883,9 @@ ProcessDeclAttribute(Sema &S, Scope *scope, Decl *D, const ParsedAttr &AL,
     break;
   case ParsedAttr::AT_HLSLResourceBinding:
     S.HLSL().handleResourceBindingAttr(D, AL);
+    break;
+  case ParsedAttr::AT_HLSLResourceClass:
+    S.HLSL().handleResourceClassAttr(D, AL);
     break;
   case ParsedAttr::AT_HLSLParamModifier:
     S.HLSL().handleParamModifierAttr(D, AL);
@@ -7179,13 +7103,6 @@ ProcessDeclAttribute(Sema &S, Scope *scope, Decl *D, const ParsedAttr &AL,
   }
 }
 
-static bool isKernelDecl(Decl *D) {
-  const FunctionType *FnTy = D->getFunctionType();
-  return D->hasAttr<OpenCLKernelAttr>() ||
-         (FnTy && FnTy->getCallConv() == CallingConv::CC_AMDGPUKernelCall) ||
-         D->hasAttr<CUDAGlobalAttr>() || D->getAttr<NVPTXKernelAttr>();
-}
-
 void Sema::ProcessDeclAttributeList(
     Scope *S, Decl *D, const ParsedAttributesView &AttrList,
     const ProcessDeclAttributeOptions &Options) {
@@ -7226,25 +7143,24 @@ void Sema::ProcessDeclAttributeList(
     } else if (const auto *A = D->getAttr<OpenCLIntelReqdSubGroupSizeAttr>()) {
       Diag(D->getLocation(), diag::err_opencl_kernel_attr) << A;
       D->setInvalidDecl();
-    }
-  }
-  if (!isKernelDecl(D)) {
-    if (const auto *A = D->getAttr<AMDGPUFlatWorkGroupSizeAttr>()) {
-      Diag(D->getLocation(), diag::err_attribute_wrong_decl_type)
-          << A << A->isRegularKeywordAttribute() << ExpectedKernelFunction;
-      D->setInvalidDecl();
-    } else if (const auto *A = D->getAttr<AMDGPUWavesPerEUAttr>()) {
-      Diag(D->getLocation(), diag::err_attribute_wrong_decl_type)
-          << A << A->isRegularKeywordAttribute() << ExpectedKernelFunction;
-      D->setInvalidDecl();
-    } else if (const auto *A = D->getAttr<AMDGPUNumSGPRAttr>()) {
-      Diag(D->getLocation(), diag::err_attribute_wrong_decl_type)
-          << A << A->isRegularKeywordAttribute() << ExpectedKernelFunction;
-      D->setInvalidDecl();
-    } else if (const auto *A = D->getAttr<AMDGPUNumVGPRAttr>()) {
-      Diag(D->getLocation(), diag::err_attribute_wrong_decl_type)
-          << A << A->isRegularKeywordAttribute() << ExpectedKernelFunction;
-      D->setInvalidDecl();
+    } else if (!D->hasAttr<CUDAGlobalAttr>()) {
+      if (const auto *A = D->getAttr<AMDGPUFlatWorkGroupSizeAttr>()) {
+        Diag(D->getLocation(), diag::err_attribute_wrong_decl_type)
+            << A << A->isRegularKeywordAttribute() << ExpectedKernelFunction;
+        D->setInvalidDecl();
+      } else if (const auto *A = D->getAttr<AMDGPUWavesPerEUAttr>()) {
+        Diag(D->getLocation(), diag::err_attribute_wrong_decl_type)
+            << A << A->isRegularKeywordAttribute() << ExpectedKernelFunction;
+        D->setInvalidDecl();
+      } else if (const auto *A = D->getAttr<AMDGPUNumSGPRAttr>()) {
+        Diag(D->getLocation(), diag::err_attribute_wrong_decl_type)
+            << A << A->isRegularKeywordAttribute() << ExpectedKernelFunction;
+        D->setInvalidDecl();
+      } else if (const auto *A = D->getAttr<AMDGPUNumVGPRAttr>()) {
+        Diag(D->getLocation(), diag::err_attribute_wrong_decl_type)
+            << A << A->isRegularKeywordAttribute() << ExpectedKernelFunction;
+        D->setInvalidDecl();
+      }
     }
   }
 

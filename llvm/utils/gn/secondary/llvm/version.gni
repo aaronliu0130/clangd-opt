@@ -1,4 +1,9 @@
+<<<<<<< HEAD
 llvm_version_major = 20
 llvm_version_minor = 0
+=======
+llvm_version_major = 19
+llvm_version_minor = 1
+>>>>>>> opt
 llvm_version_patch = 0
 llvm_version = "$llvm_version_major.$llvm_version_minor.$llvm_version_patch"

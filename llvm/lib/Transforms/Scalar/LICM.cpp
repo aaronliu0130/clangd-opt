@@ -113,8 +113,6 @@ STATISTIC(NumFPAssociationsHoisted, "Number of invariant FP expressions "
 STATISTIC(NumIntAssociationsHoisted,
           "Number of invariant int expressions "
           "reassociated and hoisted out of the loop");
-STATISTIC(NumBOAssociationsHoisted, "Number of invariant BinaryOp expressions "
-                                    "reassociated and hoisted out of the loop");
 
 /// Memory promotion is enabled by default.
 static cl::opt<bool>
@@ -2801,6 +2799,7 @@ static bool hoistMulAddAssociation(Instruction &I, Loop &L,
   return true;
 }
 
+<<<<<<< HEAD
 /// Reassociate associative binary expressions of the form
 ///
 /// 1. "(LV op C1) op C2" ==> "LV op (C1 op C2)"
@@ -2883,6 +2882,8 @@ static bool hoistBOAssociation(Instruction &I, Loop &L,
   return true;
 }
 
+=======
+>>>>>>> opt
 static bool hoistArithmetics(Instruction &I, Loop &L,
                              ICFLoopSafetyInfo &SafetyInfo,
                              MemorySSAUpdater &MSSAU, AssumptionCache *AC,
@@ -2917,12 +2918,6 @@ static bool hoistArithmetics(Instruction &I, Loop &L,
       ++NumIntAssociationsHoisted;
     else
       ++NumFPAssociationsHoisted;
-    return true;
-  }
-
-  if (hoistBOAssociation(I, L, SafetyInfo, MSSAU, AC, DT)) {
-    ++NumHoisted;
-    ++NumBOAssociationsHoisted;
     return true;
   }
 

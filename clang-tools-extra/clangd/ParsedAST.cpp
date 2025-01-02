@@ -858,8 +858,7 @@ ParsedAST::ParsedAST(PathRef TUPath, llvm::StringRef Version,
       Tokens(std::move(Tokens)), Macros(std::move(Macros)),
       Marks(std::move(Marks)), Diags(std::move(Diags)),
       LocalTopLevelDecls(std::move(LocalTopLevelDecls)),
-      Includes(std::move(Includes)), PI(std::move(PI)),
-      Resolver(std::make_unique<HeuristicResolver>(getASTContext())) {
+      Includes(std::move(Includes)), PI(std::move(PI)) {
   assert(this->Clang);
   assert(this->Action);
 }

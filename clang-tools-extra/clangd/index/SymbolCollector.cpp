@@ -1081,18 +1081,17 @@ const Symbol *SymbolCollector::addDeclaration(const NamedDecl &ND, SymbolID ID,
       *CompletionTUInfo,
       /*IncludeBriefComments*/ false);
   std::string DocComment;
-  std::string Documentation;
+  SymbolDocumentationOwned Documentation;
   bool AlreadyHasDoc = S.Flags & Symbol::HasDocComment;
   if (!AlreadyHasDoc) {
-    DocComment = getDocComment(Ctx, SymbolCompletion,
-                               /*CommentsFromHeaders=*/true);
-    Documentation = formatDocumentation(*CCS, DocComment);
+    Documentation =
+        getDocumentation(Ctx, SymbolCompletion, /*CommentsFromHeaders=*/true);
   }
   const auto UpdateDoc = [&] {
     if (!AlreadyHasDoc) {
       if (!DocComment.empty())
         S.Flags |= Symbol::HasDocComment;
-      S.Documentation = Documentation;
+      S.Documentation = Documentation.toRef();
     }
   };
   if (!(S.Flags & Symbol::IndexedForCodeCompletion)) {
@@ -1142,24 +1141,15 @@ void SymbolCollector::addDefinition(const NamedDecl &ND, const Symbol &DeclSym,
   // FIXME: use the result to filter out symbols.
   S.Definition = *DefLoc;
 
-  std::string DocComment;
-  std::string Documentation;
+  SymbolDocumentationOwned Documentation;
   if (!SkipDocCheck && !(S.Flags & Symbol::HasDocComment) &&
       (llvm::isa<FunctionDecl>(ND) || llvm::isa<CXXMethodDecl>(ND))) {
     CodeCompletionResult SymbolCompletion(&getTemplateOrThis(ND), 0);
-    const auto *CCS = SymbolCompletion.CreateCodeCompletionString(
-        *ASTCtx, *PP, CodeCompletionContext::CCC_Symbol, *CompletionAllocator,
-        *CompletionTUInfo,
-        /*IncludeBriefComments*/ false);
-    DocComment = getDocComment(ND.getASTContext(), SymbolCompletion,
-                               /*CommentsFromHeaders=*/true);
-    if (!S.Documentation.empty())
-      Documentation = S.Documentation.str() + '\n' + DocComment;
-    else
-      Documentation = formatDocumentation(*CCS, DocComment);
-    if (!DocComment.empty())
-      S.Flags |= Symbol::HasDocComment;
-    S.Documentation = Documentation;
+    if (S.Documentation.empty())
+      Documentation = getDocumentation(ND.getASTContext(), SymbolCompletion,
+                                       /*CommentsFromHeaders=*/true);
+    S.Flags |= Symbol::HasDocComment;
+    S.Documentation = Documentation.toRef();
   }
 
   Symbols.insert(S);

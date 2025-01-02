@@ -19,6 +19,7 @@
 #include "clang/AST/DeclarationName.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
+#include "clang/AST/RecordLayout.h"
 #include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/AST/Stmt.h"
 #include "clang/AST/StmtVisitor.h"
@@ -491,7 +492,7 @@ public:
         isa<UserDefinedLiteral>(E))
       return true;
 
-    auto CalleeDecls = Resolver->resolveCalleeOfCallExpr(E);
+    auto CalleeDecls = Resolver.resolveCalleeOfCallExpr(E);
     if (CalleeDecls.size() != 1)
       return true;
 
@@ -645,6 +646,73 @@ public:
     addTypeHint(Range, D->getReturnType(), /*Prefix=*/"-> ");
   }
 
+  bool VisitFieldDecl(FieldDecl *FD) {
+    const auto &Ctx = FD->getASTContext();
+    const auto *Record = FD->getParent();
+    if (Record)
+      Record = Record->getDefinition();
+    if (!Record || Record->isInvalidDecl() || Record->isDependentType())
+      return true;
+
+    const ASTRecordLayout &Layout = Ctx.getASTRecordLayout(Record);
+    unsigned EndOfField = Layout.getFieldOffset(FD->getFieldIndex());
+    if (FD->isBitField())
+      EndOfField += FD->isZeroSize(Ctx) ? 0 : FD->getBitWidthValue(Ctx);
+    else if (auto Size = Ctx.getTypeSizeInCharsIfKnown(FD->getType()))
+      EndOfField += FD->isZeroSize(Ctx) ? 0 : Size->getQuantity() * 8;
+    else
+      return true; // Can't get field size
+
+    // Calculate padding following the field.
+    uint64_t Padding = 0;
+    if (!Record->isUnion() &&
+        FD->getFieldIndex() + 1 < Layout.getFieldCount()) {
+      // Measure padding up to the next class field.
+      unsigned NextOffset = Layout.getFieldOffset(FD->getFieldIndex() + 1);
+      if (NextOffset >= EndOfField) // next field could be a bitfield!
+        Padding = NextOffset - EndOfField;
+    } else {
+      // Measure padding up to the end of the object.
+      Padding = (Layout.getSize().getQuantity() * 8) - EndOfField;
+    }
+
+    if (Padding) {
+      auto Bits = Padding % 8;
+      auto Bytes = Padding / 8;
+
+      std::string PadString = "+";
+      if (Bytes != 0)
+        PadString += std::to_string(Bytes) + (Bytes == 1 ? " byte" : " bytes");
+      if (Bits != 0)
+        PadString += (Bytes != 0 ? " and " : "") + std::to_string(Bits) +
+                     (Bits == 1 ? " bit" : " bits");
+      PadString += " padding";
+
+      if (Cfg.InlayHints.Enabled && Cfg.InlayHints.Designators) {
+        auto Loc = FD->getEndLoc().getLocWithOffset(1);
+        bool InvalidPos = false;
+        const char *Character =
+            Ctx.getSourceManager().getCharacterData(Loc, &InvalidPos);
+        while (!InvalidPos &&
+               (std::isblank(*Character) || std::isdigit(*Character) ||
+                std::isalpha(*Character) || *Character == '_')) {
+          Character++;
+          Loc = Loc.getLocWithOffset(1);
+        }
+        const char *Prefix = " (";
+        const char *Suffix = ")";
+        if (InvalidPos || *Character != ';') {
+          Loc = FD->getEndLoc();
+          Prefix = " /* ";
+          Suffix = " */";
+        }
+        addInlayHint(Loc, HintSide::Right, InlayHintKind::Designator, Prefix,
+                     PadString, Suffix);
+      }
+    }
+    return true;
+  }
+
   bool VisitVarDecl(VarDecl *D) {
     // Do not show hints for the aggregate in a structured binding,
     // but show hints for the individual bindings.
@@ -663,6 +731,73 @@ public:
 
     if (auto *AT = D->getType()->getContainedAutoType()) {
       if (AT->isDeduced() && !D->getType()->isDependentType()) {
+        // Filter evident types.
+        if (const auto *IE = D->getInit()) {
+          // Ignore literals
+          // (e.g. `auto x = 3.14f`).
+          if (llvm::isa<CompoundLiteralExpr>(IE) ||
+              llvm::isa<CXXBoolLiteralExpr>(IE) ||
+              llvm::isa<CXXNullPtrLiteralExpr>(IE) ||
+              llvm::isa<FixedPointLiteral>(IE) ||
+              llvm::isa<FloatingLiteral>(IE) ||
+              llvm::isa<ImaginaryLiteral>(IE) ||
+              llvm::isa<IntegerLiteral>(IE) || llvm::isa<StringLiteral>(IE) ||
+              llvm::isa<UserDefinedLiteral>(IE))
+            return true;
+
+          if (auto *CE = llvm::dyn_cast<CastExpr>(IE)) {
+            // Ignore type-independend cast expressions
+            // (e.g. `auto x = static_cast<int>(42)`).
+            if (auto *ECE = llvm::dyn_cast<ExplicitCastExpr>(CE)) {
+              const auto CT = ECE->getTypeAsWritten();
+              if (!CT->isDependentType())
+                return true;
+            }
+          }
+
+          // Ignore variables, what contains type in name
+          // (e.g. `auto iCounter = GetSomeInteger()`,
+          //       `auto hWnd = GetWindowHandle()`,
+          //       `auto dwTimer = GetTickCount()`).
+          static constexpr auto KPrefixes = {"m_", "ms_", "_", "m", ""};
+          const auto VarName = D->getNameAsString();
+          const auto TypeName = maybeDesugar(AST, D->getType()).getAsString();
+          std::string TypeNameLower = TypeName;
+          std::transform(TypeName.begin(), TypeName.end(),
+                         TypeNameLower.begin(), ::tolower);
+          for (const auto *Prefix : KPrefixes) {
+            const auto PrefixLength = strlen(Prefix);
+            if (VarName.size() <= PrefixLength)
+              continue;
+            if (VarName.find(Prefix) != 0)
+              continue;
+
+            const std::string_view VarNameNoPrefix = &VarName[strlen(Prefix)];
+            if (VarNameNoPrefix.size() > TypeName.length()) {
+              if (VarNameNoPrefix.find(TypeName) == 0 &&
+                  (VarNameNoPrefix[TypeName.length()] == '_' ||
+                   (islower(VarNameNoPrefix[TypeName.length() - 1]) &&
+                    isupper(VarNameNoPrefix[TypeName.length()]))))
+                return true;
+
+              if (VarNameNoPrefix.find(TypeNameLower) == 0 &&
+                  (VarNameNoPrefix[TypeName.length()] == '_' ||
+                   isupper(VarNameNoPrefix[TypeName.length()])))
+                return true;
+            }
+
+            std::string_view TypeNameShort = "";
+            auto TypeNameShortLength = 0u;
+            for (auto I = 0u;
+                 I < VarNameNoPrefix.size() && islower(VarNameNoPrefix[I]); ++I)
+              ++TypeNameShortLength;
+            if (TypeNameShortLength > 0) {
+              TypeNameShort = VarNameNoPrefix.substr(0, TypeNameShortLength);
+              if (std::string_view{TypeNameLower}.find(TypeNameShort) == 0)
+                return true;
+            }
+          }
+        }
         // Our current approach is to place the hint on the variable
         // and accordingly print the full type
         // (e.g. for `const auto& x = 42`, print `const int&`).
@@ -1120,7 +1255,7 @@ private:
   // Otherwise, the hint shouldn't be shown.
   std::optional<Range> computeBlockEndHintRange(SourceRange BraceRange,
                                                 StringRef OptionalPunctuation) {
-    constexpr unsigned HintMinLineLimit = 2;
+    constexpr unsigned HintMinLineLimit = 10;
 
     auto &SM = AST.getSourceManager();
     auto [BlockBeginFileId, BlockBeginOffset] =
@@ -1176,7 +1311,7 @@ private:
   std::optional<Range> RestrictRange;
   FileID MainFileID;
   StringRef MainFileBuf;
-  const HeuristicResolver *Resolver;
+  HeuristicResolver Resolver;
   PrintingPolicy TypeHintPolicy;
 };
 

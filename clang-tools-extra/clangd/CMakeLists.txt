@@ -68,6 +68,7 @@ add_clang_library(clangDaemon STATIC
   ClangdServer.cpp
   CodeComplete.cpp
   CodeCompletionStrings.cpp
+  CodeLens.cpp
   CollectMacros.cpp
   CompileCommands.cpp
   Compiler.cpp
@@ -109,6 +110,7 @@ add_clang_library(clangDaemon STATIC
   SemanticHighlighting.cpp
   SemanticSelection.cpp
   SourceCode.cpp
+  SymbolDocumentation.cpp
   SystemIncludeExtractor.cpp
   TidyProvider.cpp
   TUScheduler.cpp

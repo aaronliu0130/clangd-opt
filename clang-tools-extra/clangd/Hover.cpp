@@ -1198,7 +1198,7 @@ void addLayoutInfo(const NamedDecl &ND, HoverInfo &HI) {
       HI.Index = FD->getFieldIndex();
       HI.Offset = Layout.getFieldOffset(FD->getFieldIndex());
       if (FD->isBitField()) {
-        HI.Size = FD->getBitWidthValue(Ctx);
+        HI.Size = FD->getBitWidthValue();
         if (auto Size = Ctx.getTypeSizeInCharsIfKnown(FD->getType())) {
           const auto SizeInBytes = Size->getQuantity();
           const auto TypeOffset = *HI.Offset - (*HI.Offset % (SizeInBytes * 8));
@@ -1393,12 +1393,13 @@ void maybeAddSymbolProviders(ParsedAST &AST, HoverInfo &HI,
                              include_cleaner::Symbol Sym) {
   trace::Span Tracer("Hover::maybeAddSymbolProviders");
 
-  const SourceManager &SM = AST.getSourceManager();
   llvm::SmallVector<include_cleaner::Header> RankedProviders =
-      include_cleaner::headersForSymbol(Sym, SM, &AST.getPragmaIncludes());
+      include_cleaner::headersForSymbol(Sym, AST.getPreprocessor(),
+                                        &AST.getPragmaIncludes());
   if (RankedProviders.empty())
     return;
 
+  const SourceManager &SM = AST.getSourceManager();
   std::string Result;
   include_cleaner::Includes ConvertedIncludes = convertIncludes(AST);
   for (const auto &P : RankedProviders) {

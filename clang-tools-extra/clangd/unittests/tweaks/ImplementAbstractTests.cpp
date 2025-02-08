@@ -96,7 +96,7 @@ TEST_F(ImplementAbstractTest, TestUnavailable) {
         class ^C : public B {};
       )cpp"};
   for (const auto &Case : Cases) {
-    EXPECT_THAT(Case, Not(isAvailable()));
+  	EXPECT_UNAVAILABLE(Case);
   }
 }
 
@@ -371,7 +371,7 @@ TEST_F(ImplementAbstractTest, TemplateUnavailable) {
       )cpp",
   };
   for (const auto &Case : Cases) {
-    EXPECT_THAT(Case, Not(isAvailable()));
+  	EXPECT_UNAVAILABLE(Case);
   }
 }
 

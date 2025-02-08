@@ -327,7 +327,7 @@ class Foo final {})cpp";
          HI.ReturnType = "void";
          HI.Type = "void (int)";
          HI.Parameters = {
-             {{"int"}, std::string("a"), llvm::None},
+             {{"int"}, std::string("a"), std::nullopt},
          };
        }},
       // Pointers to lambdas
@@ -3164,7 +3164,7 @@ TEST(Hover, All) {
             HI.NamespaceScope = "";
             HI.Definition =
                 "bool operator==(const Foo &) const noexcept = default";
-            HI.Documentation = "";
+            HI.Documentation.CommentText = "";
           }},
   };
 

@@ -24,7 +24,7 @@
 #include "Compiler.h"
 #include "Diagnostics.h"
 #include "Headers.h"
-#include "HeuristicResolver.h"
+#include "clang/Sema/HeuristicResolver.h"
 #include "Preamble.h"
 #include "clang-include-cleaner/Record.h"
 #include "support/Path.h"

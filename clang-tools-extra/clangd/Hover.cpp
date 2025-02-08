@@ -1153,7 +1153,7 @@ static uint64_t calcRecordPaddings(const RecordDecl *Record, HoverInfo &HI,
     const auto FiledID = Field->getFieldIndex();
     uint64_t FieldSize = 0;
     if (Field->isBitField())
-      FieldSize = Field->getBitWidthValue(Ctx);
+      FieldSize = Field->getBitWidthValue();
     else if (auto Size = Ctx.getTypeSizeInCharsIfKnown(Field->getType()))
       FieldSize = Field->isZeroSize(Ctx) ? 0 : Size->getQuantity() * 8;
     const auto EndOfField = Layout.getFieldOffset(FiledID) + FieldSize;

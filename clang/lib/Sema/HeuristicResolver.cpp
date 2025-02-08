@@ -7,13 +7,13 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/Sema/HeuristicResolver.h"
-#include "AST.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/ASTTypeTraits.h"
 #include "clang/AST/CXXInheritance.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclTemplate.h"
+#include "clang/AST/DeclVisitor.h"
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/AST/Type.h"
@@ -89,7 +89,8 @@ private:
   // itself.
   // If `UnwrapPointer` is true, exactly only pointer type will be unwrapped
   // during simplification, and the operation fails if no pointer type is found.
-  QualType simplifyType(QualType Type, const Expr *E, bool UnwrapPointer);
+  QualType simplifyType(QualType Type, const Expr *E, bool UnwrapPointer,
+  						const class Type *T);
 
   // This is a reimplementation of CXXRecordDecl::lookupDependentName()
   // so that the implementation can call into other HeuristicResolver helpers.
@@ -183,6 +184,224 @@ struct InstantiatedDeclVisitor : RecursiveASTVisitor<InstantiatedDeclVisitor> {
   NamedDecl *DependentDecl;
   QualType DeducedType;
 };
+
+namespace {
+	template <typename TemplateDeclTy>
+static NamedDecl *getOnlyInstantiationImpl(TemplateDeclTy *TD) {
+  NamedDecl *Only = nullptr;
+  for (auto *Spec : TD->specializations()) {
+    if (Spec->getTemplateSpecializationKind() == TSK_ExplicitSpecialization)
+      continue;
+    if (Only != nullptr)
+      return nullptr;
+    Only = Spec;
+  }
+  return Only;
+}
+
+NamedDecl *getOnlyInstantiation(const NamedDecl *TemplatedDecl) {
+  if (TemplateDecl *TD = TemplatedDecl->getDescribedTemplate()) {
+    if (auto *CTD = llvm::dyn_cast<ClassTemplateDecl>(TD))
+      return getOnlyInstantiationImpl(CTD);
+    if (auto *FTD = llvm::dyn_cast<FunctionTemplateDecl>(TD))
+      return getOnlyInstantiationImpl(FTD);
+    if (auto *VTD = llvm::dyn_cast<VarTemplateDecl>(TD))
+      return getOnlyInstantiationImpl(VTD);
+  }
+  return nullptr;
+}
+
+NamedDecl *getOnlyInstantiatedDecls(const NamedDecl *DependentDecl) {
+  if (auto *Instantiation = getOnlyInstantiation(DependentDecl))
+    return Instantiation;
+  NamedDecl *OuterTemplate = nullptr;
+  for (auto *DC = DependentDecl->getDeclContext(); isa<CXXRecordDecl>(DC);
+       DC = DC->getParent()) {
+    auto *RD = cast<CXXRecordDecl>(DC);
+    if (auto *I = getOnlyInstantiation(RD)) {
+      OuterTemplate = I;
+      break;
+    }
+  }
+
+  if (!OuterTemplate)
+    return nullptr;
+
+  struct Visitor : DeclVisitor<Visitor, NamedDecl *> {
+    const NamedDecl *TemplatedDecl;
+    Visitor(const NamedDecl *TemplatedDecl) : TemplatedDecl(TemplatedDecl) {}
+
+    NamedDecl *VisitCXXRecordDecl(CXXRecordDecl *RD) {
+      if (RD->getTemplateInstantiationPattern() == TemplatedDecl)
+        return RD;
+      for (auto *F : RD->decls()) {
+        if (auto *Injected = llvm::dyn_cast<CXXRecordDecl>(F);
+            Injected && Injected->isInjectedClassName())
+          continue;
+        if (NamedDecl *ND = Visit(F))
+          return ND;
+      }
+      return nullptr;
+    }
+
+    NamedDecl *VisitClassTemplateDecl(ClassTemplateDecl *CTD) {
+      unsigned Size = llvm::range_size(CTD->specializations());
+      if (Size != 1)
+        return nullptr;
+      return Visit(*CTD->spec_begin());
+    }
+
+    NamedDecl *VisitFunctionTemplateDecl(FunctionTemplateDecl *FTD) {
+      unsigned Size = llvm::range_size(FTD->specializations());
+      if (Size != 1)
+        return nullptr;
+      return Visit(*FTD->spec_begin());
+    }
+
+    NamedDecl *VisitFunctionDecl(FunctionDecl *FD) {
+      if (FD->getTemplateInstantiationPattern() == TemplatedDecl)
+        return FD;
+      return nullptr;
+    }
+
+    NamedDecl *VisitVarDecl(VarDecl *VD) {
+      if (VD->getCanonicalDecl()->getSourceRange() ==
+          TemplatedDecl->getCanonicalDecl()->getSourceRange())
+        return VD;
+      return nullptr;
+    }
+
+    NamedDecl *VisitFieldDecl(FieldDecl *FD) {
+      if (FD->getCanonicalDecl()->getSourceRange() ==
+          TemplatedDecl->getCanonicalDecl()->getSourceRange())
+        return FD;
+      return nullptr;
+    }
+  };
+  return Visitor(DependentDecl).Visit(OuterTemplate);
+}
+
+std::optional<DynTypedNode>
+getOnlyInstantiatedNode(const DeclContext *StartingPoint,
+                        const DynTypedNode &DependentNode) {
+  if (auto *CTD = DependentNode.get<ClassTemplateDecl>())
+    return getOnlyInstantiatedNode(
+        StartingPoint, DynTypedNode::create(*CTD->getTemplatedDecl()));
+  if (auto *FTD = DependentNode.get<FunctionTemplateDecl>())
+    return getOnlyInstantiatedNode(
+        StartingPoint, DynTypedNode::create(*FTD->getTemplatedDecl()));
+
+  if (auto *FD = DependentNode.get<FunctionDecl>()) {
+    auto *ID = getOnlyInstantiatedDecls(FD);
+    if (!ID)
+      return std::nullopt;
+    return DynTypedNode::create(*ID);
+  }
+  if (auto *RD = DependentNode.get<CXXRecordDecl>()) {
+    auto *ID = getOnlyInstantiatedDecls(RD);
+    if (!ID)
+      return std::nullopt;
+    return DynTypedNode::create(*ID);
+  }
+
+  NamedDecl *InstantiatedEnclosingDecl = nullptr;
+  for (auto *DC = StartingPoint; DC;
+       DC = DC->getParent()) {
+    auto *ND = llvm::dyn_cast<NamedDecl>(DC);
+    if (!ND)
+      continue;
+    InstantiatedEnclosingDecl = getOnlyInstantiatedDecls(ND);
+    if (InstantiatedEnclosingDecl)
+      break;
+  }
+
+  if (!InstantiatedEnclosingDecl)
+    return std::nullopt;
+
+  auto *InstantiatedFunctionDecl =
+      llvm::dyn_cast<FunctionDecl>(InstantiatedEnclosingDecl);
+  if (!InstantiatedFunctionDecl)
+    return std::nullopt;
+
+  struct FullExprVisitor : RecursiveASTVisitor<FullExprVisitor> {
+    const DynTypedNode &DependentNode;
+    Stmt *Result;
+    FullExprVisitor(const DynTypedNode &DependentNode)
+        : DependentNode(DependentNode), Result(nullptr) {}
+
+    bool shouldVisitTemplateInstantiations() const { return true; }
+
+    bool shouldVisitImplicitCode() const { return true; }
+
+    bool VisitStmt(Stmt *S) {
+      if (S->getSourceRange() == DependentNode.getSourceRange()) {
+        Result = S;
+        return false;
+      }
+      return true;
+    }
+  };
+
+  FullExprVisitor Visitor(DependentNode);
+  Visitor.TraverseFunctionDecl(InstantiatedFunctionDecl);
+  if (Visitor.Result)
+    return DynTypedNode::create(*Visitor.Result);
+  return std::nullopt;
+}
+
+NamedDecl *
+getOnlyInstantiationForMemberFunction(const CXXMethodDecl *TemplatedDecl) {
+  if (auto *MemberInstantiation = getOnlyInstantiation(TemplatedDecl))
+    return MemberInstantiation;
+  NamedDecl *OuterTemplate = nullptr;
+  for (auto *DC = TemplatedDecl->getDeclContext(); isa<CXXRecordDecl>(DC);
+       DC = DC->getParent()) {
+    auto *RD = cast<CXXRecordDecl>(DC);
+    if (auto *I = getOnlyInstantiation(RD)) {
+      OuterTemplate = I;
+      break;
+    }
+  }
+  if (!OuterTemplate)
+    return nullptr;
+  struct Visitor : DeclVisitor<Visitor, NamedDecl *> {
+    const CXXMethodDecl *TD;
+    Visitor(const CXXMethodDecl *TemplatedDecl) : TD(TemplatedDecl) {}
+    NamedDecl *VisitCXXRecordDecl(CXXRecordDecl *RD) {
+      for (auto *F : RD->decls()) {
+        if (!isa<NamedDecl>(F))
+          continue;
+        if (NamedDecl *ND = Visit(F))
+          return ND;
+      }
+      return nullptr;
+    }
+
+    NamedDecl *VisitClassTemplateDecl(ClassTemplateDecl *CTD) {
+      unsigned Size = llvm::range_size(CTD->specializations());
+      if (Size != 1)
+        return nullptr;
+      return Visit(*CTD->spec_begin());
+    }
+
+    NamedDecl *VisitFunctionTemplateDecl(FunctionTemplateDecl *FTD) {
+      unsigned Size = llvm::range_size(FTD->specializations());
+      if (Size != 1)
+        return nullptr;
+      return Visit(*FTD->spec_begin());
+    }
+
+    NamedDecl *VisitCXXMethodDecl(CXXMethodDecl *MD) {
+      auto *Pattern = MD->getTemplateInstantiationPattern();
+      if (Pattern == TD)
+        return MD;
+      return nullptr;
+    }
+
+  };
+  return Visitor(TemplatedDecl).Visit(OuterTemplate);
+}
+} // namespace
 
 /// Attempt to resolve the dependent type from the surrounding context for which
 /// a single instantiation is available.
@@ -318,7 +537,8 @@ QualType HeuristicResolverImpl::getPointeeType(QualType T) {
 }
 
 QualType HeuristicResolverImpl::simplifyType(QualType Type, const Expr *E,
-                                             bool UnwrapPointer) {
+                                             bool UnwrapPointer,
+                                             const class Type *MaybeResolved) {
   bool DidUnwrapPointer = false;
   auto SimplifyOneStep = [&](QualType T) {
     if (UnwrapPointer) {
@@ -327,9 +547,10 @@ QualType HeuristicResolverImpl::simplifyType(QualType Type, const Expr *E,
         return Pointee;
       }
     }
-    if (BaseType->isDependentType())
-    if (auto *MaybeResolved = resolveTypeFromInstantiatedTemplate(EnclosingDecl, ME))
-      BaseType = MaybeResolved;
+    if (T->isDependentType()) {
+      if (MaybeResolved)
+        T = QualType(MaybeResolved, 0);
+    }
     if (const auto *RT = T->getAs<ReferenceType>()) {
       // Does not count as "unwrap pointer".
       return RT->getPointeeType();
@@ -403,7 +624,7 @@ std::vector<const NamedDecl *> HeuristicResolverImpl::resolveMemberExpr(
   // Try resolving the member inside the expression's base type.
   Expr *Base = ME->isImplicitAccess() ? nullptr : ME->getBase();
   QualType BaseType = ME->getBaseType();
-  BaseType = simplifyType(BaseType, Base, ME->isArrow());
+  BaseType = simplifyType(BaseType, Base, ME->isArrow(), resolveTypeFromInstantiatedTemplate(EnclosingDecl, ME));
   return resolveDependentMember(BaseType, ME->getMember(), NoFilter);
 }
 

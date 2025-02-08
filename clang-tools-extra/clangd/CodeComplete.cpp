@@ -1910,7 +1910,7 @@ private:
           return;
         auto &C = Output.Completions[SymbolToCompletion.at(S.ID)];
         C.Documentation.emplace();
-        parseDocumentation(S.Documentation, *C.Documentation);
+        parseDocumentation(S.Documentation.CommentText, *C.Documentation);
       });
     }
 

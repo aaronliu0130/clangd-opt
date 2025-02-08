@@ -657,7 +657,7 @@ public:
     const ASTRecordLayout &Layout = Ctx.getASTRecordLayout(Record);
     unsigned EndOfField = Layout.getFieldOffset(FD->getFieldIndex());
     if (FD->isBitField())
-      EndOfField += FD->isZeroSize(Ctx) ? 0 : FD->getBitWidthValue(Ctx);
+      EndOfField += FD->isZeroSize(Ctx) ? 0 : FD->getBitWidthValue();
     else if (auto Size = Ctx.getTypeSizeInCharsIfKnown(FD->getType()))
       EndOfField += FD->isZeroSize(Ctx) ? 0 : Size->getQuantity() * 8;
     else

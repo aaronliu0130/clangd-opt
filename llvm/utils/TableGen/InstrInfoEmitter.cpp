@@ -286,6 +286,7 @@ void InstrInfoEmitter::emitOperandNameMappings(
   OS << "enum {\n";
   for (const auto &[I, Op] : enumerate(OperandNameToID))
     OS << "  " << Op.first << " = " << I << ",\n";
+  OS << "  OPERAND_LAST = " << NumOperandNames << ",\n";
   OS << "};\n";
   OS << "} // end namespace llvm::" << Namespace << "::OpName\n";
   OS << "#endif //GET_INSTRINFO_OPERAND_ENUM\n\n";
@@ -889,6 +890,9 @@ void InstrInfoEmitter::emitTIIHelperMethods(raw_ostream &OS,
 
 // run - Emit the main instruction description records for the target...
 void InstrInfoEmitter::run(raw_ostream &OS) {
+  TGTimer &Timer = Records.getTimer();
+  Timer.startTimer("Analyze DAG patterns");
+
   emitSourceFileHeader("Target Instruction Enum Values and Descriptors", OS);
   emitEnums(OS);
 
@@ -897,7 +901,6 @@ void InstrInfoEmitter::run(raw_ostream &OS) {
   const Record *InstrInfo = Target.getInstructionSet();
 
   // Collect all of the operand info records.
-  TGTimer &Timer = Records.getTimer();
   Timer.startTimer("Collect operand info");
   OperandInfoListTy OperandInfoList;
   OperandInfoMapTy OperandInfoMap;
@@ -1137,6 +1140,9 @@ void InstrInfoEmitter::run(raw_ostream &OS) {
 
   Timer.startTimer("Emit verifier methods");
   emitFeatureVerifier(OS, Target);
+
+  Timer.startTimer("Emit map table");
+  EmitMapTable(Records, OS);
 }
 
 void InstrInfoEmitter::emitRecord(
@@ -1313,13 +1319,5 @@ void InstrInfoEmitter::emitEnums(raw_ostream &OS) {
   OS << "#endif // GET_INSTRINFO_SCHED_ENUM\n\n";
 }
 
-static void EmitInstrInfo(const RecordKeeper &Records, raw_ostream &OS) {
-  TGTimer &Timer = Records.getTimer();
-  Timer.startTimer("Analyze DAG patterns");
-  InstrInfoEmitter(Records).run(OS);
-  Timer.startTimer("Emit map table");
-  EmitMapTable(Records, OS);
-}
-
-static TableGen::Emitter::Opt X("gen-instr-info", EmitInstrInfo,
-                                "Generate instruction descriptions");
+static TableGen::Emitter::OptClass<InstrInfoEmitter>
+    X("gen-instr-info", "Generate instruction descriptions");

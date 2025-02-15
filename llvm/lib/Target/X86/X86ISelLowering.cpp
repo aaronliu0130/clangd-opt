@@ -2944,7 +2944,7 @@ bool X86::isOffsetSuitableForCodeModel(int64_t Offset, CodeModel::Model CM,
 }
 
 /// Return true if the condition is an signed comparison operation.
-static bool isX86CCSigned(unsigned X86CC) {
+static bool isX86CCSigned(X86::CondCode X86CC) {
   switch (X86CC) {
   default:
     llvm_unreachable("Invalid integer condition!");
@@ -12689,6 +12689,20 @@ static bool isShuffleMaskInputInPlace(int Input, ArrayRef<int> Mask) {
   return true;
 }
 
+/// Test whether the specified input (0 or 1) is a broadcast/splat blended by
+/// the given mask.
+///
+static bool isShuffleMaskInputBroadcastable(int Input, ArrayRef<int> Mask,
+                                            int BroadcastableElement = 0) {
+  assert((Input == 0 || Input == 1) && "Only two inputs to shuffles.");
+  int Size = Mask.size();
+  for (int i = 0; i < Size; ++i)
+    if (Mask[i] >= 0 && Mask[i] / Size == Input &&
+        Mask[i] % Size != BroadcastableElement)
+      return false;
+  return true;
+}
+
 /// If we are extracting two 128-bit halves of a vector and shuffling the
 /// result, match that to a 256-bit AVX2 vperm* instruction to avoid a
 /// multi-shuffle lowering.
@@ -16190,6 +16204,8 @@ static SDValue lowerV4F64Shuffle(const SDLoc &DL, ArrayRef<int> Mask,
 
   bool V1IsInPlace = isShuffleMaskInputInPlace(0, Mask);
   bool V2IsInPlace = isShuffleMaskInputInPlace(1, Mask);
+  bool V1IsSplat = isShuffleMaskInputBroadcastable(0, Mask);
+  bool V2IsSplat = isShuffleMaskInputBroadcastable(1, Mask);
 
   // If we have lane crossing shuffles AND they don't all come from the lower
   // lane elements, lower to SHUFPD(VPERM2F128(V1, V2), VPERM2F128(V1, V2)).
@@ -16198,7 +16214,9 @@ static SDValue lowerV4F64Shuffle(const SDLoc &DL, ArrayRef<int> Mask,
   if (is128BitLaneCrossingShuffleMask(MVT::v4f64, Mask) &&
       !all_of(Mask, [](int M) { return M < 2 || (4 <= M && M < 6); }) &&
       (V1.getOpcode() != ISD::BUILD_VECTOR) &&
-      (V2.getOpcode() != ISD::BUILD_VECTOR))
+      (V2.getOpcode() != ISD::BUILD_VECTOR) &&
+      (!Subtarget.hasAVX2() ||
+       !((V1IsInPlace || V1IsSplat) && (V2IsInPlace || V2IsSplat))))
     return lowerShuffleAsLanePermuteAndSHUFP(DL, MVT::v4f64, V1, V2, Mask, DAG);
 
   // If we have one input in place, then we can permute the other input and
@@ -22975,7 +22993,7 @@ static bool isProfitableToUseFlagOp(SDValue Op) {
 
 /// Emit nodes that will be selected as "test Op0,Op0", or something
 /// equivalent.
-static SDValue EmitTest(SDValue Op, unsigned X86CC, const SDLoc &dl,
+static SDValue EmitTest(SDValue Op, X86::CondCode X86CC, const SDLoc &dl,
                         SelectionDAG &DAG, const X86Subtarget &Subtarget) {
   // CF and OF aren't always set the way we want. Determine which
   // of these we need.
@@ -23085,7 +23103,7 @@ static SDValue EmitTest(SDValue Op, unsigned X86CC, const SDLoc &dl,
 
 /// Emit nodes that will be selected as "cmp Op0,Op1", or something
 /// equivalent.
-static SDValue EmitCmp(SDValue Op0, SDValue Op1, unsigned X86CC,
+static SDValue EmitCmp(SDValue Op0, SDValue Op1, X86::CondCode X86CC,
                        const SDLoc &dl, SelectionDAG &DAG,
                        const X86Subtarget &Subtarget) {
   if (isNullConstant(Op1))
@@ -23157,10 +23175,17 @@ static SDValue EmitCmp(SDValue Op0, SDValue Op1, unsigned X86CC,
     return Add.getValue(1);
   }
 
-  // Use SUB instead of CMP to enable CSE between SUB and CMP.
+  // If we already have an XOR of the ops, use that to check for equality.
+  // Else use SUB instead of CMP to enable CSE between SUB and CMP.
+  unsigned X86Opc = X86ISD::SUB;
+  if ((X86CC == X86::COND_E || X86CC == X86::COND_NE) &&
+      (DAG.doesNodeExist(ISD::XOR, DAG.getVTList({CmpVT}), {Op0, Op1}) ||
+       DAG.doesNodeExist(ISD::XOR, DAG.getVTList({CmpVT}), {Op1, Op0})))
+    X86Opc = X86ISD::XOR;
+
   SDVTList VTs = DAG.getVTList(CmpVT, MVT::i32);
-  SDValue Sub = DAG.getNode(X86ISD::SUB, dl, VTs, Op0, Op1);
-  return Sub.getValue(1);
+  SDValue CmpOp = DAG.getNode(X86Opc, dl, VTs, Op0, Op1);
+  return CmpOp.getValue(1);
 }
 
 bool X86TargetLowering::isXAndYEqZeroPreferableToXAndYEqY(ISD::CondCode Cond,
@@ -45153,6 +45178,19 @@ static SDValue combineBitcast(SDNode *N, SelectionDAG &DAG,
     }
   }
 
+  // Attempt to peek through f16 bitcasted extractions hidden by truncation.
+  if (VT == MVT::f16 && SrcVT == MVT::i16) {
+    SDValue Src = peekThroughTruncates(N0);
+    if (Src.getOpcode() == ISD::EXTRACT_VECTOR_ELT &&
+        Src.getOperand(0).getValueSizeInBits() == 128 &&
+        isNullConstant(Src.getOperand(1))) {
+      SDLoc DL(N);
+      return DAG.getNode(ISD::EXTRACT_VECTOR_ELT, DL, VT,
+                         DAG.getBitcast(MVT::v8f16, Src.getOperand(0)),
+                         DAG.getVectorIdxConstant(0, DL));
+    }
+  }
+
   // Since MMX types are special and don't usually play with other vector types,
   // it's better to handle them early to be sure we emit efficient code by
   // avoiding store-load conversions.
@@ -53898,11 +53936,6 @@ static SDValue combineTruncate(SDNode *N, SelectionDAG &DAG,
     if (BCSrc.getValueType() == MVT::x86mmx)
       return DAG.getNode(X86ISD::MMX_MOVD2W, DL, MVT::i32, BCSrc);
   }
-
-  // Try to combine (trunc (vNi64 (lrint x))) to (vNi32 (lrint x)).
-  if (Src.getOpcode() == ISD::LRINT && VT.getScalarType() == MVT::i32 &&
-      Src.hasOneUse())
-    return DAG.getNode(ISD::LRINT, DL, VT, Src.getOperand(0));
 
   return SDValue();
 }
